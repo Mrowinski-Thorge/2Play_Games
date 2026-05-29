@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:flutter_animate/flutter_animate.dart';
@@ -131,7 +132,10 @@ class _TicTacToeScreenState extends State<TicTacToeScreen> {
   }
 
   void _exitGame() {
-    Provider.of<ConnectivityService>(context, listen: false).exitGame();
+    final connService = Provider.of<ConnectivityService>(context, listen: false);
+    if (connService.isHost) {
+      connService.exitGame();
+    }
     Navigator.of(context).pop();
   }
 
@@ -149,6 +153,7 @@ class _TicTacToeScreenState extends State<TicTacToeScreen> {
     }
 
     final isMyTurn = _currentTurn == _mySymbol;
+    final isLandscape = MediaQuery.of(context).orientation == Orientation.landscape;
 
     return Scaffold(
       body: Container(
@@ -165,233 +170,338 @@ class _TicTacToeScreenState extends State<TicTacToeScreen> {
                   colors: [Color(0xFFF4F6FB), Color(0xFFE9EEF6), Color(0xFFF7F8FC)],
                 ),
         ),
-        child: SafeArea(
-          child: Column(
-            children: [
-              // Header
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    IconButton(
-                      icon: Icon(Icons.arrow_back_ios_new_rounded, color: isDark ? Colors.white70 : Colors.black87),
-                      onPressed: _exitGame,
-                    ),
-                    Text(
-                      'Tic-Tac-Toe',
-                      style: TextStyle(
-                        fontSize: 20,
-                        fontWeight: FontWeight.bold,
-                        color: isDark ? Colors.white : Colors.black87,
-                      ),
-                    ),
-                    IconButton(
-                      icon: Stack(
-                        clipBehavior: Clip.none,
-                        children: [
-                          Icon(Icons.chat_bubble_rounded, color: isDark ? Colors.white70 : Colors.black87, size: 24),
-                          if (connService.unreadChatCount > 0)
-                            Positioned(
-                              right: -4,
-                              top: -4,
-                              child: Container(
-                                padding: const EdgeInsets.all(2),
-                                decoration: BoxDecoration(
-                                  color: const Color(0xFFFF007F),
-                                  shape: BoxShape.circle,
-                                  border: Border.all(color: isDark ? const Color(0xFF0F0B1E) : Colors.white, width: 1.5),
-                                ),
-                                constraints: const BoxConstraints(
-                                  minWidth: 16,
-                                  minHeight: 16,
-                                ),
-                                child: Text(
-                                  '${connService.unreadChatCount}',
-                                  style: const TextStyle(
-                                    color: Colors.white,
-                                    fontSize: 8,
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                                  textAlign: TextAlign.center,
-                                ),
-                              ),
-                            ),
-                        ],
-                      ),
-                      onPressed: () {
-                        showModalBottomSheet(
-                          context: context,
-                          isScrollControlled: true,
-                          backgroundColor: Colors.transparent,
-                          builder: (_) => const ChatSheet(),
-                        );
-                      },
-                    ),
-                  ],
-                ),
-              ),
-
-              const SizedBox(height: 20),
-
-              // Player Stats Bar
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 20),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                  children: [
-                    _buildPlayerLabel(
-                      context,
-                      'Du ($_mySymbol)',
-                      isMyTurn && !_isGameOver,
-                      _mySymbol == 'X' ? AppTheme.accentNeonPink : AppTheme.accentNeonCyan,
-                    ),
-                    Text(
-                      'VS',
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w900,
-                        color: isDark ? Colors.white30 : Colors.black38,
-                      ),
-                    ),
-                    _buildPlayerLabel(
-                      context,
-                      '${connService.connectedPeer?.name} ($_opponentSymbol)',
-                      !isMyTurn && !_isGameOver,
-                      _opponentSymbol == 'X' ? AppTheme.accentNeonPink : AppTheme.accentNeonCyan,
-                    ),
-                  ],
-                ),
-              ),
-
-              const Spacer(),
-
-              // Game Board Grid
-              AspectRatio(
-                aspectRatio: 1.0,
-                child: Padding(
-                  padding: const EdgeInsets.all(24.0),
-                  child: GlassContainer(
-                    borderRadius: 28,
-                    padding: const EdgeInsets.all(16),
-                    child: GridView.builder(
-                      physics: const NeverScrollableScrollPhysics(),
-                      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                        crossAxisCount: 3,
-                        crossAxisSpacing: 12,
-                        mainAxisSpacing: 12,
-                      ),
-                      itemCount: 9,
-                      itemBuilder: (context, index) {
-                        return GestureDetector(
-                          onTap: () => _makeMove(index),
-                          child: Container(
-                            decoration: BoxDecoration(
-                              color: isDark ? Colors.white.withOpacity(0.03) : Colors.black.withOpacity(0.02),
-                              borderRadius: BorderRadius.circular(16),
-                              border: Border.all(
-                                color: isDark ? Colors.white10 : Colors.black.withOpacity(0.06),
-                              ),
-                            ),
-                            child: Center(
-                              child: _buildSymbolWidget(_board[index]),
-                            ),
-                          ),
-                        );
-                      },
-                    ),
-                  ),
-                ),
-              ),
-
-              const Spacer(),
-
-              // Turn Status Description
-              if (!_isGameOver)
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-                  decoration: BoxDecoration(
-                    color: isMyTurn
-                        ? (isDark ? const Color(0xFF8A2387).withOpacity(0.1) : Colors.purple.withOpacity(0.05))
-                        : Colors.transparent,
-                    borderRadius: BorderRadius.circular(20),
-                  ),
-                  child: Text(
-                    isMyTurn ? 'Du bist an der Reihe!' : 'Gegner wählt einen Zug...',
-                    style: TextStyle(
-                      fontSize: 15,
-                      fontWeight: FontWeight.bold,
-                      color: isMyTurn
-                          ? (isDark ? const Color(0xFF00F2FE) : const Color(0xFF8A2387))
-                          : (isDark ? Colors.white60 : Colors.black54),
-                    ),
-                  ),
-                ).animate(target: isMyTurn ? 1.0 : 0.0).shimmer(duration: 1500.ms),
-
-              // Game Over Screen Banner / Dialog overlay
-              if (_isGameOver)
-                Padding(
-                  padding: const EdgeInsets.all(24.0),
-                  child: GlassContainer(
-                    padding: const EdgeInsets.all(20),
-                    borderRadius: 24,
-                    gradientColors: [
-                      const Color(0xFF8A2387).withOpacity(0.3),
-                      const Color(0xFF00F2FE).withOpacity(0.1),
-                    ],
-                    child: Column(
+        child: Stack(
+          children: [
+            SafeArea(
+              child: isLandscape
+                  ? Row(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
-                        Text(
-                          _winner == 'draw'
-                              ? 'Unentschieden!'
-                              : (_winner == _mySymbol ? 'Sieg!' : 'Niederlage!'),
-                          style: TextStyle(
-                            fontSize: 28,
-                            fontWeight: FontWeight.w900,
-                            color: _winner == 'draw'
-                                ? Colors.amberAccent
-                                : (_winner == _mySymbol ? Colors.greenAccent : Colors.redAccent),
-                          ),
-                        ),
-                        const SizedBox(height: 8),
-                        Text(
-                          _winner == 'draw'
-                              ? 'Gute Runde! Wollt ihr Revanche?'
-                              : (_winner == _mySymbol
-                                  ? 'Du hast diese Runde gewonnen!'
-                                  : 'Dein Gegner war schneller!'),
-                          style: TextStyle(fontSize: 13, color: isDark ? Colors.white70 : Colors.black87),
-                        ),
-                        const SizedBox(height: 20),
-                        ElevatedButton.icon(
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: const Color(0xFF8A2387),
-                            foregroundColor: Colors.white,
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(14),
+                        // Left column: Stats, status, settings
+                        Expanded(
+                          flex: 4,
+                          child: SingleChildScrollView(
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                _buildHeader(context, connService, isDark),
+                                const SizedBox(height: 16),
+                                _buildPlayerStats(context, connService, isMyTurn),
+                                const SizedBox(height: 24),
+                                if (!_isGameOver) _buildTurnStatus(isMyTurn, isDark),
+                              ],
                             ),
-                            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
                           ),
-                          onPressed: _waitingForResetAccept ? null : _requestReset,
-                          icon: _waitingForResetAccept
-                              ? const SizedBox(
-                                  width: 14,
-                                  height: 14,
-                                  child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
-                                )
-                              : const Icon(Icons.replay_rounded),
-                          label: Text(
-                            _waitingForResetAccept ? 'Warte auf Gegner...' : 'Nochmal spielen',
-                            style: const TextStyle(fontWeight: FontWeight.bold),
+                        ),
+                        // Right column: Board grid
+                        Expanded(
+                          flex: 5,
+                          child: Center(
+                            child: AspectRatio(
+                              aspectRatio: 1.0,
+                              child: Padding(
+                                padding: const EdgeInsets.all(16.0),
+                                child: _buildBoardGrid(context, isDark),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    )
+                  : Column(
+                      children: [
+                        _buildHeader(context, connService, isDark),
+                        const SizedBox(height: 20),
+                        _buildPlayerStats(context, connService, isMyTurn),
+                        const Spacer(),
+                        AspectRatio(
+                          aspectRatio: 1.0,
+                          child: Padding(
+                            padding: const EdgeInsets.all(24.0),
+                            child: _buildBoardGrid(context, isDark),
+                          ),
+                        ),
+                        const Spacer(),
+                        if (!_isGameOver) _buildTurnStatus(isMyTurn, isDark),
+                        const Spacer(),
+                      ],
+                    ),
+            ),
+            if (_isGameOver) _buildGameOverOverlay(context, isDark, connService),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildHeader(BuildContext context, ConnectivityService connService, bool isDark) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          IconButton(
+            icon: Icon(Icons.arrow_back_ios_new_rounded, color: isDark ? Colors.white70 : Colors.black87),
+            onPressed: _exitGame,
+          ),
+          Text(
+            'Tic-Tac-Toe',
+            style: TextStyle(
+              fontSize: 20,
+              fontWeight: FontWeight.bold,
+              color: isDark ? Colors.white : Colors.black87,
+            ),
+          ),
+          IconButton(
+            icon: Stack(
+              clipBehavior: Clip.none,
+              children: [
+                Icon(Icons.chat_bubble_rounded, color: isDark ? Colors.white70 : Colors.black87, size: 24),
+                if (connService.unreadChatCount > 0)
+                  Positioned(
+                    right: -4,
+                    top: -4,
+                    child: Container(
+                      padding: const EdgeInsets.all(2),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFFF007F),
+                        shape: BoxShape.circle,
+                        border: Border.all(color: isDark ? const Color(0xFF0F0B1E) : Colors.white, width: 1.5),
+                      ),
+                      constraints: const BoxConstraints(
+                        minWidth: 16,
+                        minHeight: 16,
+                      ),
+                      child: Text(
+                        '${connService.unreadChatCount}',
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 8,
+                          fontWeight: FontWeight.bold,
+                        ),
+                        textAlign: TextAlign.center,
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+            onPressed: () {
+              showModalBottomSheet(
+                context: context,
+                isScrollControlled: true,
+                backgroundColor: Colors.transparent,
+                builder: (_) => const ChatSheet(),
+              );
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPlayerStats(BuildContext context, ConnectivityService connService, bool isMyTurn) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 20),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+        children: [
+          _buildPlayerLabel(
+            context,
+            'Du ($_mySymbol)',
+            isMyTurn && !_isGameOver,
+            _mySymbol == 'X' ? AppTheme.accentNeonPink : AppTheme.accentNeonCyan,
+          ),
+          Text(
+            'VS',
+            style: TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.w900,
+              color: isDark ? Colors.white30 : Colors.black38,
+            ),
+          ),
+          _buildPlayerLabel(
+            context,
+            '${connService.connectedPeer?.name} ($_opponentSymbol)',
+            !isMyTurn && !_isGameOver,
+            _opponentSymbol == 'X' ? AppTheme.accentNeonPink : AppTheme.accentNeonCyan,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildBoardGrid(BuildContext context, bool isDark) {
+    return GlassContainer(
+      borderRadius: 28,
+      padding: const EdgeInsets.all(16),
+      child: GridView.builder(
+        physics: const NeverScrollableScrollPhysics(),
+        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+          crossAxisCount: 3,
+          crossAxisSpacing: 12,
+          mainAxisSpacing: 12,
+        ),
+        itemCount: 9,
+        itemBuilder: (context, index) {
+          return GestureDetector(
+            onTap: () => _makeMove(index),
+            child: Container(
+              decoration: BoxDecoration(
+                color: isDark ? Colors.white.withOpacity(0.03) : Colors.black.withOpacity(0.02),
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(
+                  color: isDark ? Colors.white10 : Colors.black.withOpacity(0.06),
+                ),
+              ),
+              child: Center(
+                child: _buildSymbolWidget(_board[index]),
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _buildTurnStatus(bool isMyTurn, bool isDark) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+      decoration: BoxDecoration(
+        color: isMyTurn
+            ? (isDark ? const Color(0xFF8A2387).withOpacity(0.1) : Colors.purple.withOpacity(0.05))
+            : Colors.transparent,
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Text(
+        isMyTurn ? 'Du bist an der Reihe!' : 'Gegner wählt einen Zug...',
+        style: TextStyle(
+          fontSize: 15,
+          fontWeight: FontWeight.bold,
+          color: isMyTurn
+              ? (isDark ? const Color(0xFF00F2FE) : const Color(0xFF8A2387))
+              : (isDark ? Colors.white60 : Colors.black54),
+        ),
+      ),
+    ).animate(target: isMyTurn ? 1.0 : 0.0).shimmer(duration: 1500.ms);
+  }
+
+  Widget _buildGameOverOverlay(BuildContext context, bool isDark, ConnectivityService connService) {
+    final isLandscape = MediaQuery.of(context).orientation == Orientation.landscape;
+    final isWin = _winner == _mySymbol;
+    final isDraw = _winner == 'draw';
+
+    final winColor = isWin
+        ? Colors.greenAccent
+        : (isDraw ? Colors.amberAccent : Colors.redAccent);
+
+    final title = isDraw
+        ? 'UNENTSCHIEDEN!'
+        : (isWin ? 'SIEG!' : 'NIEDERLAGE!');
+
+    final desc = isDraw
+        ? 'Gute Runde! Wollt ihr Revanche?'
+        : (isWin
+            ? 'Du hast diese Runde gewonnen!'
+            : 'Dein Gegner war schneller!');
+
+    return Positioned.fill(
+      child: Container(
+        color: Colors.black.withOpacity(0.75),
+        child: BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 5, sigmaY: 5),
+          child: Center(
+            child: SingleChildScrollView(
+              child: Container(
+                width: isLandscape ? 420 : 310,
+                padding: const EdgeInsets.all(24),
+                margin: const EdgeInsets.symmetric(horizontal: 24),
+                decoration: BoxDecoration(
+                  color: isDark ? const Color(0xFF161B26) : Colors.white,
+                  borderRadius: BorderRadius.circular(28),
+                  border: Border.all(
+                    color: winColor.withOpacity(0.6),
+                    width: 2,
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: winColor.withOpacity(0.2),
+                      blurRadius: 20,
+                      spreadRadius: 2,
+                    ),
+                  ],
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      isWin
+                          ? Icons.emoji_events_rounded
+                          : (isDraw ? Icons.handshake_rounded : Icons.sentiment_very_dissatisfied_rounded),
+                      size: 64,
+                      color: winColor,
+                    ).animate().scaleXY(begin: 0.8, end: 1.2, duration: 800.ms, curve: Curves.bounceOut),
+                    const SizedBox(height: 16),
+                    Text(
+                      title,
+                      style: TextStyle(
+                        fontSize: 24,
+                        fontWeight: FontWeight.w900,
+                        letterSpacing: 2,
+                        color: winColor,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    Text(
+                      desc,
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        fontSize: 14,
+                        color: isDark ? Colors.white70 : Colors.black87,
+                      ),
+                    ),
+                    const SizedBox(height: 24),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: OutlinedButton(
+                            style: OutlinedButton.styleFrom(
+                              side: BorderSide(color: isDark ? Colors.white24 : Colors.black26),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                              padding: const EdgeInsets.symmetric(vertical: 12),
+                            ),
+                            onPressed: _exitGame,
+                            child: Text(
+                              'Beenden',
+                              style: TextStyle(color: isDark ? Colors.white : Colors.black87, fontWeight: FontWeight.bold),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: ElevatedButton(
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: const Color(0xFF8A2387),
+                              foregroundColor: Colors.white,
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                              padding: const EdgeInsets.symmetric(vertical: 12),
+                            ),
+                            onPressed: _waitingForResetAccept ? null : _requestReset,
+                            child: _waitingForResetAccept
+                                ? const SizedBox(
+                                    width: 18,
+                                    height: 18,
+                                    child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                                  )
+                                : const Text('Revanche', style: TextStyle(fontWeight: FontWeight.bold)),
                           ),
                         ),
                       ],
                     ),
-                  ),
-                ).animate().scaleXY(begin: 0.8, end: 1.0, duration: 400.ms, curve: Curves.bounceOut),
-
-              const Spacer(),
-            ],
+                  ],
+                ),
+              ),
+            ),
           ),
         ),
       ),

@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:flutter_animate/flutter_animate.dart';
@@ -23,6 +24,9 @@ class _RockPaperScissorsScreenState extends State<RockPaperScissorsScreen> {
   
   String _roundResult = ''; // 'win', 'lose', 'draw'
   StreamSubscription? _msgSubscription;
+  bool _isGameOver = false;
+  String _winner = '';
+  bool _waitingForResetAccept = false;
 
   @override
   void initState() {
@@ -105,6 +109,14 @@ class _RockPaperScissorsScreenState extends State<RockPaperScissorsScreen> {
       _roundResult = 'lose';
       _opponentScore++;
     }
+
+    if (_myScore >= 3) {
+      _isGameOver = true;
+      _winner = 'Du';
+    } else if (_opponentScore >= 3) {
+      _isGameOver = true;
+      _winner = 'Gegner';
+    }
   }
 
   void _resetRound() {
@@ -113,10 +125,20 @@ class _RockPaperScissorsScreenState extends State<RockPaperScissorsScreen> {
       _opponentChoice = null;
       _revealed = false;
       _roundResult = '';
+      _waitingForResetAccept = false;
+      if (_isGameOver) {
+        _myScore = 0;
+        _opponentScore = 0;
+        _isGameOver = false;
+        _winner = '';
+      }
     });
   }
 
   void _requestReset() {
+    setState(() {
+      _waitingForResetAccept = true;
+    });
     Provider.of<ConnectivityService>(context, listen: false).sendPayload({
       'type': 'game_reset',
       'gameId': 'rockpaperscissors',
@@ -124,7 +146,10 @@ class _RockPaperScissorsScreenState extends State<RockPaperScissorsScreen> {
   }
 
   void _exitGame() {
-    Provider.of<ConnectivityService>(context, listen: false).exitGame();
+    final connService = Provider.of<ConnectivityService>(context, listen: false);
+    if (connService.isHost) {
+      connService.exitGame();
+    }
     Navigator.of(context).pop();
   }
 
@@ -141,6 +166,8 @@ class _RockPaperScissorsScreenState extends State<RockPaperScissorsScreen> {
       return const SizedBox();
     }
 
+    final isLandscape = MediaQuery.of(context).orientation == Orientation.landscape;
+
     return Scaffold(
       body: Container(
         decoration: BoxDecoration(
@@ -156,167 +183,220 @@ class _RockPaperScissorsScreenState extends State<RockPaperScissorsScreen> {
                   colors: [Color(0xFFF4F6FB), Color(0xFFE9EEF6), Color(0xFFF7F8FC)],
                 ),
         ),
-        child: SafeArea(
-          child: Column(
-            children: [
-              // Header
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    IconButton(
-                      icon: Icon(Icons.arrow_back_ios_new_rounded, color: isDark ? Colors.white70 : Colors.black87),
-                      onPressed: _exitGame,
-                    ),
-                    Text(
-                      'Schere, Stein, Papier',
-                      style: TextStyle(
-                        fontSize: 20,
-                        fontWeight: FontWeight.bold,
-                        color: isDark ? Colors.white : Colors.black87,
-                      ),
-                    ),
-                    IconButton(
-                      icon: Stack(
-                        clipBehavior: Clip.none,
-                        children: [
-                          Icon(Icons.chat_bubble_rounded, color: isDark ? Colors.white70 : Colors.black87, size: 24),
-                          if (connService.unreadChatCount > 0)
-                            Positioned(
-                              right: -4,
-                              top: -4,
-                              child: Container(
-                                padding: const EdgeInsets.all(2),
-                                decoration: BoxDecoration(
-                                  color: const Color(0xFFFF007F),
-                                  shape: BoxShape.circle,
-                                  border: Border.all(color: isDark ? const Color(0xFF0F0B1E) : Colors.white, width: 1.5),
-                                ),
-                                constraints: const BoxConstraints(
-                                  minWidth: 16,
-                                  minHeight: 16,
-                                ),
-                                child: Text(
-                                  '${connService.unreadChatCount}',
-                                  style: const TextStyle(
-                                    color: Colors.white,
-                                    fontSize: 8,
-                                    fontWeight: FontWeight.bold,
+        child: Stack(
+          children: [
+            SafeArea(
+              child: isLandscape
+                  ? Row(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        // Left column: Header, scoreboard, round winner text, next round button
+                        Expanded(
+                          flex: 4,
+                          child: SingleChildScrollView(
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                _buildHeader(context, isDark),
+                                const SizedBox(height: 12),
+                                _buildScoreboard(isDark, connService),
+                                const SizedBox(height: 24),
+                                if (_revealed && !_isGameOver)
+                                  Padding(
+                                    padding: const EdgeInsets.symmetric(horizontal: 20.0),
+                                    child: _buildNextRoundButton(),
                                   ),
-                                  textAlign: TextAlign.center,
-                                ),
-                              ),
+                              ],
                             ),
-                        ],
-                      ),
-                      onPressed: () {
-                        showModalBottomSheet(
-                          context: context,
-                          isScrollControlled: true,
-                          backgroundColor: Colors.transparent,
-                          builder: (_) => const ChatSheet(),
-                        );
-                      },
-                    ),
-                  ],
-                ),
-              ),
-
-              const SizedBox(height: 20),
-
-              // Scoreboard Card
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 20),
-                child: GlassContainer(
-                  padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
-                  borderRadius: 20,
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Column(
-                        children: [
-                          const Text('DU', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.grey)),
-                          const SizedBox(height: 4),
-                          Text(
-                            '$_myScore',
-                            style: const TextStyle(fontSize: 32, fontWeight: FontWeight.w900, color: Color(0xFF00F2FE)),
                           ),
-                        ],
-                      ),
-                      Text(
-                        'PUNKTE',
-                        style: TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w900,
-                          letterSpacing: 2,
-                          color: isDark ? Colors.white24 : Colors.black26,
                         ),
-                      ),
-                      Column(
-                        children: [
-                          Text(
-                            (connService.connectedPeer?.name ?? 'GEGNER').toUpperCase(),
-                            style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.grey),
+                        // Right column: Choice cards / reveal area
+                        Expanded(
+                          flex: 5,
+                          child: Center(
+                            child: _revealed
+                                ? _buildRevealArea(isDark)
+                                : Column(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      _buildWaitingArea(isDark, connService),
+                                      const SizedBox(height: 24),
+                                      _buildChoicesRow(context),
+                                    ],
+                                  ),
                           ),
-                          const SizedBox(height: 4),
-                          Text(
-                            '$_opponentScore',
-                            style: const TextStyle(fontSize: 32, fontWeight: FontWeight.w900, color: Color(0xFFFF007F)),
+                        ),
+                      ],
+                    )
+                  : Column(
+                      children: [
+                        _buildHeader(context, isDark),
+                        const SizedBox(height: 20),
+                        _buildScoreboard(isDark, connService),
+                        const Spacer(flex: 2),
+                        if (_revealed)
+                          _buildRevealArea(isDark)
+                        else
+                          _buildWaitingArea(isDark, connService),
+                        const Spacer(flex: 3),
+                        if (!_revealed)
+                          _buildChoicesRow(context)
+                        else
+                          Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 20.0),
+                            child: _buildNextRoundButton(),
                           ),
-                        ],
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-
-              const Spacer(flex: 2),
-
-              // Reveal / Hand Animations Area
-              if (_revealed)
-                _buildRevealArea(isDark)
-              else
-                _buildWaitingArea(isDark, connService),
-
-              const Spacer(flex: 3),
-
-              // Buttons Choice Selector / Reset Buttons
-              if (!_revealed)
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 20.0),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                    children: [
-                      _buildChoiceCard(context, 'rock', '✊', 'Stein'),
-                      _buildChoiceCard(context, 'paper', '✋', 'Papier'),
-                      _buildChoiceCard(context, 'scissors', '✌️', 'Schere'),
-                    ],
-                  ),
-                )
-              else
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 20.0),
-                  child: ElevatedButton.icon(
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFF8A2387),
-                      foregroundColor: Colors.white,
-                      minimumSize: const Size(200, 50),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                      elevation: 4,
+                        const Spacer(),
+                      ],
                     ),
-                    onPressed: _requestReset,
-                    icon: const Icon(Icons.replay_rounded),
-                    label: const Text('Nächste Runde', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-                  ),
-                ).animate().scaleXY(begin: 0.8, end: 1.0, duration: 250.ms, curve: Curves.bounceOut),
-
-              const Spacer(),
-            ],
-          ),
+            ),
+            if (_isGameOver) _buildGameOverOverlay(context, isDark, connService),
+          ],
         ),
       ),
     );
+  }
+
+  Widget _buildHeader(BuildContext context, bool isDark) {
+    final connService = Provider.of<ConnectivityService>(context);
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          IconButton(
+            icon: Icon(Icons.arrow_back_ios_new_rounded, color: isDark ? Colors.white70 : Colors.black87),
+            onPressed: _exitGame,
+          ),
+          Text(
+            'Schere, Stein, Papier',
+            style: TextStyle(
+              fontSize: 20,
+              fontWeight: FontWeight.bold,
+              color: isDark ? Colors.white : Colors.black87,
+            ),
+          ),
+          IconButton(
+            icon: Stack(
+              clipBehavior: Clip.none,
+              children: [
+                Icon(Icons.chat_bubble_rounded, color: isDark ? Colors.white70 : Colors.black87, size: 24),
+                if (connService.unreadChatCount > 0)
+                  Positioned(
+                    right: -4,
+                    top: -4,
+                    child: Container(
+                      padding: const EdgeInsets.all(2),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFFF007F),
+                        shape: BoxShape.circle,
+                        border: Border.all(color: isDark ? const Color(0xFF0F0B1E) : Colors.white, width: 1.5),
+                      ),
+                      constraints: const BoxConstraints(
+                        minWidth: 16,
+                        minHeight: 16,
+                      ),
+                      child: Text(
+                        '${connService.unreadChatCount}',
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 8,
+                          fontWeight: FontWeight.bold,
+                        ),
+                        textAlign: TextAlign.center,
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+            onPressed: () {
+              showModalBottomSheet(
+                context: context,
+                isScrollControlled: true,
+                backgroundColor: Colors.transparent,
+                builder: (_) => const ChatSheet(),
+              );
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildScoreboard(bool isDark, ConnectivityService connService) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 20),
+      child: GlassContainer(
+        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+        borderRadius: 20,
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Column(
+              children: [
+                const Text('DU', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.grey)),
+                const SizedBox(height: 4),
+                Text(
+                  '$_myScore',
+                  style: const TextStyle(fontSize: 32, fontWeight: FontWeight.w900, color: Color(0xFF00F2FE)),
+                ),
+              ],
+            ),
+            Text(
+              'PUNKTE (Ziel: 3)',
+              style: TextStyle(
+                fontSize: 10,
+                fontWeight: FontWeight.w900,
+                letterSpacing: 2,
+                color: isDark ? Colors.white24 : Colors.black26,
+              ),
+            ),
+            Column(
+              children: [
+                Text(
+                  (connService.connectedPeer?.name ?? 'GEGNER').toUpperCase(),
+                  style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.grey),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  '$_opponentScore',
+                  style: const TextStyle(fontSize: 32, fontWeight: FontWeight.w900, color: Color(0xFFFF007F)),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildChoicesRow(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 20.0),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+        children: [
+          _buildChoiceCard(context, 'rock', '✊', 'Stein'),
+          _buildChoiceCard(context, 'paper', '✋', 'Papier'),
+          _buildChoiceCard(context, 'scissors', '✌️', 'Schere'),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildNextRoundButton() {
+    return ElevatedButton.icon(
+      style: ElevatedButton.styleFrom(
+        backgroundColor: const Color(0xFF8A2387),
+        foregroundColor: Colors.white,
+        minimumSize: const Size(200, 50),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        elevation: 4,
+      ),
+      onPressed: _requestReset,
+      icon: const Icon(Icons.replay_rounded),
+      label: const Text('Nächste Runde', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+    ).animate().scaleXY(begin: 0.8, end: 1.0, duration: 250.ms, curve: Curves.bounceOut);
   }
 
   Widget _buildRevealArea(bool isDark) {
@@ -336,6 +416,7 @@ class _RockPaperScissorsScreenState extends State<RockPaperScissorsScreen> {
         : (_roundResult == 'lose' ? 'Gegner gewinnt Runde!' : 'Unentschieden!');
 
     return Column(
+      mainAxisSize: MainAxisSize.min,
       children: [
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceEvenly,
@@ -406,6 +487,7 @@ class _RockPaperScissorsScreenState extends State<RockPaperScissorsScreen> {
     final opponentLocked = _opponentChoice != null;
 
     return Column(
+      mainAxisSize: MainAxisSize.min,
       children: [
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceEvenly,
@@ -505,6 +587,125 @@ class _RockPaperScissorsScreenState extends State<RockPaperScissorsScreen> {
               ),
             ),
           ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildGameOverOverlay(BuildContext context, bool isDark, ConnectivityService connService) {
+    final isLandscape = MediaQuery.of(context).orientation == Orientation.landscape;
+    final isWin = _winner == 'Du';
+    final winColor = isWin ? Colors.greenAccent : Colors.redAccent;
+    final title = isWin ? 'SIEG!' : 'NIEDERLAGE!';
+    final desc = isWin
+        ? 'Herzlichen Glückwunsch, du hast das Match gewonnen!'
+        : 'Schade, dein Gegner hat das Match gewonnen!';
+
+    return Positioned.fill(
+      child: Container(
+        color: Colors.black.withOpacity(0.75),
+        child: BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 5, sigmaY: 5),
+          child: Center(
+            child: SingleChildScrollView(
+              child: Container(
+                width: isLandscape ? 420 : 310,
+                padding: const EdgeInsets.all(24),
+                margin: const EdgeInsets.symmetric(horizontal: 24),
+                decoration: BoxDecoration(
+                  color: isDark ? const Color(0xFF161B26) : Colors.white,
+                  borderRadius: BorderRadius.circular(28),
+                  border: Border.all(
+                    color: winColor.withOpacity(0.6),
+                    width: 2,
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: winColor.withOpacity(0.2),
+                      blurRadius: 20,
+                      spreadRadius: 2,
+                    ),
+                  ],
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      isWin ? Icons.emoji_events_rounded : Icons.sentiment_very_dissatisfied_rounded,
+                      size: 64,
+                      color: winColor,
+                    ).animate().scaleXY(begin: 0.8, end: 1.2, duration: 800.ms, curve: Curves.bounceOut),
+                    const SizedBox(height: 16),
+                    Text(
+                      title,
+                      style: TextStyle(
+                        fontSize: 24,
+                        fontWeight: FontWeight.w900,
+                        letterSpacing: 2,
+                        color: winColor,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    Text(
+                      desc,
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        fontSize: 14,
+                        color: isDark ? Colors.white70 : Colors.black87,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      'Endstand: $_myScore - $_opponentScore',
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.amber,
+                      ),
+                    ),
+                    const SizedBox(height: 24),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: OutlinedButton(
+                            style: OutlinedButton.styleFrom(
+                              side: BorderSide(color: isDark ? Colors.white24 : Colors.black26),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                              padding: const EdgeInsets.symmetric(vertical: 12),
+                            ),
+                            onPressed: _exitGame,
+                            child: Text(
+                              'Beenden',
+                              style: TextStyle(color: isDark ? Colors.white : Colors.black87, fontWeight: FontWeight.bold),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: ElevatedButton(
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: const Color(0xFF8A2387),
+                              foregroundColor: Colors.white,
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                              padding: const EdgeInsets.symmetric(vertical: 12),
+                            ),
+                            onPressed: _waitingForResetAccept ? null : _requestReset,
+                            child: _waitingForResetAccept
+                                ? const SizedBox(
+                                    width: 18,
+                                    height: 18,
+                                    child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                                  )
+                                : const Text('Revanche', style: TextStyle(fontWeight: FontWeight.bold)),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
         ),
       ),
     );

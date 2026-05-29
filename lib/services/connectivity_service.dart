@@ -58,10 +58,11 @@ enum AppConnectivityMode {
   simulated
 }
 
-class ConnectivityService extends ChangeNotifier {
+class ConnectivityService extends ChangeNotifier with WidgetsBindingObserver {
   static const String _keyUsername = 'two_play_username';
   static const String _keyDarkMode = 'two_play_dark_mode';
   static const String _keyMode = 'two_play_conn_mode';
+  static const String _keyKnownPlayers = 'two_play_known_players';
 
   String _myUsername = 'Player';
   bool _isDarkMode = true;
@@ -88,6 +89,14 @@ class ConnectivityService extends ChangeNotifier {
   // Active game syncing
   String? _activeGameId;
   String? get activeGameId => _activeGameId;
+
+  // Game Suggestion syncing
+  String? _suggestedGameId;
+  String? get suggestedGameId => _suggestedGameId;
+
+  // Known players
+  List<Map<String, String>> _knownPlayers = [];
+  List<Map<String, String>> get knownPlayers => _knownPlayers;
 
   // Chat support
   final List<ChatMessage> _chatMessages = [];
@@ -136,6 +145,27 @@ class ConnectivityService extends ChangeNotifier {
 
   ConnectivityService() {
     _loadSettings();
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.inactive ||
+        state == AppLifecycleState.paused ||
+        state == AppLifecycleState.detached) {
+      if (isConnected) {
+        sendPayload({
+          'type': 'game_exit',
+        });
+      }
+      disconnect();
+    }
   }
 
   Future<void> _loadSettings() async {
@@ -146,11 +176,52 @@ class ConnectivityService extends ChangeNotifier {
     if (modeStr != null) {
       _mode = modeStr == 'real' ? AppConnectivityMode.real : AppConnectivityMode.simulated;
     }
+    
+    // Load known players
+    final knownJson = prefs.getString(_keyKnownPlayers);
+    if (knownJson != null) {
+      try {
+        final decoded = jsonDecode(knownJson) as List;
+        _knownPlayers = decoded.map((item) => Map<String, String>.from(item)).toList();
+      } catch (e) {
+        debugPrint('Error decoding known players: $e');
+      }
+    }
+    
     notifyListeners();
     
     if (_mode == AppConnectivityMode.real) {
       _initRealPlugin();
     }
+  }
+
+  Future<void> _registerConnectedPlayer(AppPeer peer) async {
+    final prefs = await SharedPreferences.getInstance();
+    final existingIndex = _knownPlayers.indexWhere((p) => p['id'] == peer.id);
+    
+    if (existingIndex != -1) {
+      _knownPlayers.removeAt(existingIndex);
+    }
+    
+    _knownPlayers.insert(0, {
+      'id': peer.id,
+      'name': peer.name,
+      'isMock': peer.isMock ? 'true' : 'false',
+    });
+    
+    if (_knownPlayers.length > 5) {
+      _knownPlayers = _knownPlayers.sublist(0, 5);
+    }
+    
+    await prefs.setString(_keyKnownPlayers, jsonEncode(_knownPlayers));
+    notifyListeners();
+  }
+
+  Future<void> clearKnownPlayers() async {
+    final prefs = await SharedPreferences.getInstance();
+    _knownPlayers.clear();
+    await prefs.remove(_keyKnownPlayers);
+    notifyListeners();
   }
 
   Future<void> setUsername(String newName) async {
@@ -290,6 +361,7 @@ class ConnectivityService extends ChangeNotifier {
       Timer(const Duration(milliseconds: 1500), () {
         _connectedPeer = peer.copyWith(state: PeerState.connected);
         _updatePeerState(peer.id, PeerState.connected);
+        _registerConnectedPlayer(peer);
         stopScanning();
       });
     }
@@ -311,6 +383,7 @@ class ConnectivityService extends ChangeNotifier {
       Timer(const Duration(milliseconds: 1000), () {
         _connectedPeer = peer.copyWith(state: PeerState.connected);
         _updatePeerState(peer.id, PeerState.connected);
+        _registerConnectedPlayer(peer);
         stopAdvertising();
       });
     }
@@ -330,6 +403,7 @@ class ConnectivityService extends ChangeNotifier {
 
     _connectedPeer = null;
     _activeGameId = null;
+    _suggestedGameId = null;
     _chatMessages.clear();
     _unreadChatCount = 0;
     _updatePeerState(peerId, PeerState.notConnected);
@@ -351,6 +425,7 @@ class ConnectivityService extends ChangeNotifier {
 
   void selectGame(String gameId) {
     _activeGameId = gameId;
+    _suggestedGameId = null; // Clear suggestion
     notifyListeners();
     sendPayload({
       'type': 'game_select',
@@ -358,8 +433,18 @@ class ConnectivityService extends ChangeNotifier {
     });
   }
 
+  void suggestGame(String gameId) {
+    _suggestedGameId = gameId;
+    notifyListeners();
+    sendPayload({
+      'type': 'game_suggest',
+      'gameId': gameId,
+    });
+  }
+
   void exitGame() {
     _activeGameId = null;
+    _suggestedGameId = null; // Clear suggestion
     notifyListeners();
     sendPayload({
       'type': 'game_exit',
@@ -407,6 +492,7 @@ class ConnectivityService extends ChangeNotifier {
           final appPeer = AppPeer(id: device.deviceId, name: device.deviceName, state: state);
           if (state == PeerState.connected) {
             _connectedPeer = appPeer;
+            _registerConnectedPlayer(appPeer);
             // The advertiser/browser logic maps who is host
             // If we were scanning, we invited, hence we are guest
             if (_isScanning) _isHost = false;
@@ -453,9 +539,14 @@ class ConnectivityService extends ChangeNotifier {
     final type = payload['type'] as String?;
     if (type == 'game_select') {
       _activeGameId = payload['gameId'] as String?;
+      _suggestedGameId = null; // Clear suggestion
       notifyListeners();
     } else if (type == 'game_exit') {
       _activeGameId = null;
+      _suggestedGameId = null; // Clear suggestion
+      notifyListeners();
+    } else if (type == 'game_suggest') {
+      _suggestedGameId = payload['gameId'] as String?;
       notifyListeners();
     } else if (type == 'chat_message') {
       final senderName = payload['senderName'] as String? ?? 'Gegner';
@@ -511,6 +602,16 @@ class ConnectivityService extends ChangeNotifier {
       _handleIncomingPayload(payload);
     } else if (type == 'game_exit') {
       _handleIncomingPayload(payload);
+    } else if (type == 'game_suggest') {
+      _handleIncomingPayload(payload);
+      
+      // If we suggest a game and the simulated peer is the host, they will accept our suggestion after a short delay
+      if (!_isHost) {
+        Timer(const Duration(milliseconds: 1200), () {
+          if (!isConnected || _activeGameId != null) return;
+          selectGame(payload['gameId']);
+        });
+      }
     } else if (type == 'game_move') {
       // Simulate opponent thinking
       Timer(Duration(milliseconds: 700 + _random.nextInt(500)), () {

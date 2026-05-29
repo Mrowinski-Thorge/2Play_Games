@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:ui';
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
@@ -517,7 +518,10 @@ class _MinigolfScreenState extends State<MinigolfScreen> with SingleTickerProvid
   }
 
   void _exitGame() {
-    Provider.of<ConnectivityService>(context, listen: false).exitGame();
+    final connService = Provider.of<ConnectivityService>(context, listen: false);
+    if (connService.isHost) {
+      connService.exitGame();
+    }
     Navigator.of(context).pop();
   }
 
@@ -534,6 +538,7 @@ class _MinigolfScreenState extends State<MinigolfScreen> with SingleTickerProvid
     }
 
     final isBallStationary = _ballVel == Offset.zero;
+    final isLandscape = MediaQuery.of(context).orientation == Orientation.landscape;
 
     return Scaffold(
       body: Container(
@@ -551,274 +556,506 @@ class _MinigolfScreenState extends State<MinigolfScreen> with SingleTickerProvid
                 ),
         ),
         child: SafeArea(
-          child: Column(
+          child: Stack(
             children: [
-              // Header Controls
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    IconButton(
-                      icon: Icon(Icons.arrow_back_ios_new_rounded, color: isDark ? Colors.white70 : Colors.black87),
-                      onPressed: _exitGame,
-                    ),
-                    Column(
+              isLandscape
+                  ? Row(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
-                        Text(
-                          _currentLevel.name,
-                          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: isDark ? Colors.white : Colors.black87),
-                        ),
-                        Text(
-                          _isTournamentMode 
-                              ? 'Turnier: Loch ${_currentTournamentIndex + 1}/9 (Par ${_currentLevel.par})'
-                              : 'Loch $_currentLevelId/50 (Par ${_currentLevel.par})',
-                          style: const TextStyle(fontSize: 11, color: Colors.grey),
-                        ),
-                      ],
-                    ),
-                    Row(
-                      children: [
-                        IconButton(
-                          icon: Stack(
-                            clipBehavior: Clip.none,
-                            children: [
-                              Icon(Icons.chat_bubble_rounded, color: isDark ? Colors.white70 : Colors.black87, size: 24),
-                              if (connService.unreadChatCount > 0)
-                                Positioned(
-                                  right: -4,
-                                  top: -4,
-                                  child: Container(
-                                    padding: const EdgeInsets.all(2),
-                                    decoration: BoxDecoration(
-                                      color: const Color(0xFFFF007F),
-                                      shape: BoxShape.circle,
-                                      border: Border.all(color: isDark ? const Color(0xFF0F0B1E) : Colors.white, width: 1.5),
-                                    ),
-                                    constraints: const BoxConstraints(
-                                      minWidth: 16,
-                                      minHeight: 16,
-                                    ),
-                                    child: Text(
-                                      '${connService.unreadChatCount}',
-                                      style: const TextStyle(
-                                        color: Colors.white,
-                                        fontSize: 8,
-                                        fontWeight: FontWeight.bold,
-                                      ),
-                                      textAlign: TextAlign.center,
-                                    ),
-                                  ),
-                                ),
-                            ],
-                          ),
-                          onPressed: () {
-                            showModalBottomSheet(
-                              context: context,
-                              isScrollControlled: true,
-                              backgroundColor: Colors.transparent,
-                              builder: (_) => const ChatSheet(),
-                            );
-                          },
-                        ),
-                        const SizedBox(width: 8),
-                        IconButton(
-                          icon: Icon(Icons.replay_rounded, color: isDark ? Colors.white70 : Colors.black87),
-                          onPressed: _resetLevel,
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-
-              // Game Info Panel
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                  children: [
-                    _buildStatusBadge('Du: $_strokeCount Schläge', _myTurn && isBallStationary && !_levelCompleted, Colors.greenAccent),
-                    _buildStatusBadge('${connService.connectedPeer?.name}: $_opponentStrokeCount Schläge', !_myTurn && isBallStationary && !_opponentCompleted, Colors.blueAccent),
-                  ],
-                ),
-              ),
-
-              const SizedBox(height: 12),
-
-              // Canvas Frame
-              Expanded(
-                child: Center(
-                  child: AspectRatio(
-                    aspectRatio: 360.0 / 500.0,
-                    child: Padding(
-                      padding: const EdgeInsets.all(12.0),
-                      child: Container(
-                        decoration: BoxDecoration(
-                          borderRadius: BorderRadius.circular(28),
-                          border: Border.all(color: isDark ? Colors.white10 : Colors.black.withOpacity(0.08), width: 2),
-                        ),
-                        child: ClipRRect(
-                          borderRadius: BorderRadius.circular(26),
-                          child: GestureDetector(
-                            onPanStart: (details) {
-                              if (!isBallStationary || _levelCompleted || !_myTurn) return;
-                              // Check if tap was near the ball
-                              final renderBox = context.findRenderObject() as RenderBox;
-                              final localPos = renderBox.globalToLocal(details.globalPosition);
-                              
-                              // Translate coordinates to local canvas coordinate mapping
-                              final canvasW = renderBox.size.width - 24; // padding borders
-                              final canvasH = (canvasW * 500.0) / 360.0;
-                              
-                              // Check scaling factor
-                              final scaleX = 360.0 / canvasW;
-                              final scaleY = 500.0 / canvasH;
-
-                              // Target ball click checking
-                              final dx = (details.localPosition.dx) * scaleX;
-                              final dy = (details.localPosition.dy) * scaleY;
-                              final tapPos = Offset(dx, dy);
-
-                              if ((tapPos - _ballPos).distance < 30.0) {
-                                setState(() {
-                                  _dragStart = _ballPos;
-                                  _dragCurrent = tapPos;
-                                });
-                              }
-                            },
-                            onPanUpdate: (details) {
-                              if (_dragStart == null) return;
-                              final renderBox = context.findRenderObject() as RenderBox;
-                              final scaleX = 360.0 / (renderBox.size.width - 24);
-                              final scaleY = 500.0 / (((renderBox.size.width - 24) * 500.0) / 360.0);
-                              
-                              setState(() {
-                                _dragCurrent = Offset(
-                                  details.localPosition.dx * scaleX,
-                                  details.localPosition.dy * scaleY,
-                                );
-                              });
-                            },
-                            onPanEnd: (details) {
-                              if (_dragStart == null || _dragCurrent == null) return;
-                              
-                              // Calculate shot vector (aim away from drag direction)
-                              final aimVector = _dragStart! - _dragCurrent!;
-                              double dist = aimVector.distance;
-                              if (dist > 5.0) {
-                                final clampedDist = dist.clamp(0.0, _maxDragDist);
-                                final normalizedVec = aimVector / dist;
-                                _takeStroke(normalizedVec * clampedDist);
-                              }
-
-                              setState(() {
-                                _dragStart = null;
-                                _dragCurrent = null;
-                              });
-                            },
-                            child: Stack(
+                        // Left Column: stats, controls, levels
+                        Expanded(
+                          flex: 4,
+                          child: SingleChildScrollView(
+                            padding: const EdgeInsets.symmetric(horizontal: 12),
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
                               children: [
-                                CustomPaint(
-                                  size: Size.infinite,
-                                  painter: GolfPainter(
-                                    level: _currentLevel,
-                                    ballPos: _ballPos,
-                                    ballRadius: _ballRadius,
-                                    opponentBallPos: _opponentBallPos,
-                                    opponentCompleted: _opponentCompleted,
-                                    dragStart: _dragStart,
-                                    dragCurrent: _dragCurrent,
-                                    maxDrag: _maxDragDist,
-                                    isDark: isDark,
-                                  ),
-                                ),
-
-                                // Water splash splash indicator overlay
-                                if (_waterResetTriggered)
-                                  Container(
-                                    color: Colors.black45,
-                                    child: Center(
-                                      child: Column(
-                                        mainAxisSize: MainAxisSize.min,
+                                // Header Controls
+                                Padding(
+                                  padding: const EdgeInsets.symmetric(vertical: 8),
+                                  child: Row(
+                                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                    children: [
+                                      IconButton(
+                                        icon: Icon(Icons.arrow_back_ios_new_rounded, color: isDark ? Colors.white70 : Colors.black87),
+                                        onPressed: _exitGame,
+                                      ),
+                                      Column(
                                         children: [
-                                          const Icon(Icons.waves_rounded, size: 64, color: Color(0xFF00F2FE)),
-                                          const SizedBox(height: 12),
-                                          const Text(
-                                            'WASSERHINDERNIS!\nStrafschlag +1',
-                                            textAlign: TextAlign.center,
-                                            style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 18),
-                                          ).animate().shake(),
+                                          Text(
+                                            _currentLevel.name,
+                                            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: isDark ? Colors.white : Colors.black87),
+                                          ),
+                                          Text(
+                                            _isTournamentMode 
+                                                ? 'Loch ${_currentTournamentIndex + 1}/9 (Par ${_currentLevel.par})'
+                                                : 'Loch $_currentLevelId/50 (Par ${_currentLevel.par})',
+                                            style: const TextStyle(fontSize: 10, color: Colors.grey),
+                                          ),
                                         ],
                                       ),
-                                    ),
+                                      Row(
+                                        children: [
+                                          IconButton(
+                                            icon: Stack(
+                                              clipBehavior: Clip.none,
+                                              children: [
+                                                Icon(Icons.chat_bubble_rounded, color: isDark ? Colors.white70 : Colors.black87, size: 22),
+                                                if (connService.unreadChatCount > 0)
+                                                  Positioned(
+                                                    right: -4,
+                                                    top: -4,
+                                                    child: Container(
+                                                      padding: const EdgeInsets.all(2),
+                                                      decoration: BoxDecoration(
+                                                        color: const Color(0xFFFF007F),
+                                                        shape: BoxShape.circle,
+                                                        border: Border.all(color: isDark ? const Color(0xFF0F0B1E) : Colors.white, width: 1.5),
+                                                      ),
+                                                      constraints: const BoxConstraints(
+                                                        minWidth: 14,
+                                                        minHeight: 14,
+                                                      ),
+                                                      child: Text(
+                                                        '${connService.unreadChatCount}',
+                                                        style: const TextStyle(
+                                                          color: Colors.white,
+                                                          fontSize: 8,
+                                                          fontWeight: FontWeight.bold,
+                                                        ),
+                                                        textAlign: TextAlign.center,
+                                                      ),
+                                                    ),
+                                                  ),
+                                              ],
+                                            ),
+                                            onPressed: () {
+                                              showModalBottomSheet(
+                                                context: context,
+                                                isScrollControlled: true,
+                                                backgroundColor: Colors.transparent,
+                                                builder: (_) => const ChatSheet(),
+                                              );
+                                            },
+                                          ),
+                                          IconButton(
+                                            icon: Icon(Icons.replay_rounded, color: isDark ? Colors.white70 : Colors.black87, size: 22),
+                                            onPressed: _resetLevel,
+                                          ),
+                                        ],
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                const SizedBox(height: 8),
+                                _buildStatusBadge('Du: $_strokeCount', _myTurn && isBallStationary && !_levelCompleted, Colors.greenAccent),
+                                const SizedBox(height: 8),
+                                _buildStatusBadge('${connService.connectedPeer?.name}: $_opponentStrokeCount', !_myTurn && isBallStationary && !_opponentCompleted, Colors.blueAccent),
+                                const SizedBox(height: 16),
+                                if (!_isTournamentMode && _strokeCount == 0 && isBallStationary)
+                                  Column(
+                                    children: [
+                                      ElevatedButton.icon(
+                                        style: ElevatedButton.styleFrom(
+                                          backgroundColor: const Color(0xFF8A2387).withOpacity(0.2),
+                                          foregroundColor: Colors.white,
+                                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                                          side: const BorderSide(color: Color(0xFF8A2387), width: 1),
+                                        ),
+                                        onPressed: _startTournament,
+                                        icon: const Icon(Icons.emoji_events_rounded, color: Colors.amber, size: 18),
+                                        label: const Text('Turnier starten', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
+                                      ),
+                                      const SizedBox(height: 8),
+                                      DropdownButtonHideUnderline(
+                                        child: DropdownButton<int>(
+                                          value: _currentLevelId,
+                                          dropdownColor: isDark ? const Color(0xFF1B1437) : Colors.white,
+                                          items: List.generate(50, (index) {
+                                            return DropdownMenuItem(
+                                              value: index + 1,
+                                              child: Text('Hole ${index + 1}', style: TextStyle(color: isDark ? Colors.white : Colors.black87, fontSize: 13, fontWeight: FontWeight.bold)),
+                                            );
+                                          }),
+                                          onChanged: (id) {
+                                            if (id != null) _loadLevel(id);
+                                          },
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                if (_isTournamentMode && isBallStationary)
+                                  ElevatedButton(
+                                    style: ElevatedButton.styleFrom(backgroundColor: Colors.redAccent.withOpacity(0.15), foregroundColor: Colors.redAccent),
+                                    onPressed: _stopTournament,
+                                    child: const Text('Turnier beenden', style: TextStyle(fontWeight: FontWeight.bold)),
                                   ),
                               ],
                             ),
                           ),
                         ),
-                      ),
+                        // Right Column: Canvas
+                        Expanded(
+                          flex: 6,
+                          child: Center(
+                            child: AspectRatio(
+                              aspectRatio: 360.0 / 500.0,
+                              child: Padding(
+                                padding: const EdgeInsets.all(12.0),
+                                child: Container(
+                                  decoration: BoxDecoration(
+                                    borderRadius: BorderRadius.circular(28),
+                                    border: Border.all(color: isDark ? Colors.white10 : Colors.black.withOpacity(0.08), width: 2),
+                                  ),
+                                  child: ClipRRect(
+                                    borderRadius: BorderRadius.circular(26),
+                                    child: LayoutBuilder(
+                                      builder: (context, constraints) {
+                                        return GestureDetector(
+                                          onPanStart: (details) {
+                                            if (!isBallStationary || _levelCompleted || !_myTurn) return;
+                                            final scaleX = 360.0 / constraints.maxWidth;
+                                            final scaleY = 500.0 / constraints.maxHeight;
+
+                                            final dx = details.localPosition.dx * scaleX;
+                                            final dy = details.localPosition.dy * scaleY;
+                                            final tapPos = Offset(dx, dy);
+
+                                            if ((tapPos - _ballPos).distance < 30.0) {
+                                              setState(() {
+                                                _dragStart = _ballPos;
+                                                _dragCurrent = tapPos;
+                                              });
+                                            }
+                                          },
+                                          onPanUpdate: (details) {
+                                            if (_dragStart == null) return;
+                                            final scaleX = 360.0 / constraints.maxWidth;
+                                            final scaleY = 500.0 / constraints.maxHeight;
+                                            
+                                            setState(() {
+                                              _dragCurrent = Offset(
+                                                details.localPosition.dx * scaleX,
+                                                details.localPosition.dy * scaleY,
+                                              );
+                                            });
+                                          },
+                                          onPanEnd: (details) {
+                                            if (_dragStart == null || _dragCurrent == null) return;
+                                            final aimVector = _dragStart! - _dragCurrent!;
+                                            double dist = aimVector.distance;
+                                            if (dist > 5.0) {
+                                              final clampedDist = dist.clamp(0.0, _maxDragDist);
+                                              final normalizedVec = aimVector / dist;
+                                              _takeStroke(normalizedVec * clampedDist);
+                                            }
+                                            setState(() {
+                                              _dragStart = null;
+                                              _dragCurrent = null;
+                                            });
+                                          },
+                                          child: Stack(
+                                            children: [
+                                              CustomPaint(
+                                                size: Size.infinite,
+                                                painter: GolfPainter(
+                                                  level: _currentLevel,
+                                                  ballPos: _ballPos,
+                                                  ballRadius: _ballRadius,
+                                                  opponentBallPos: _opponentBallPos,
+                                                  opponentCompleted: _opponentCompleted,
+                                                  dragStart: _dragStart,
+                                                  dragCurrent: _dragCurrent,
+                                                  maxDrag: _maxDragDist,
+                                                  isDark: isDark,
+                                                ),
+                                              ),
+                                              if (_waterResetTriggered)
+                                                Container(
+                                                  color: Colors.black45,
+                                                  child: Center(
+                                                    child: Column(
+                                                      mainAxisSize: MainAxisSize.min,
+                                                      children: [
+                                                        const Icon(Icons.waves_rounded, size: 64, color: Color(0xFF00F2FE)),
+                                                        const SizedBox(height: 12),
+                                                        const Text(
+                                                          'WASSERHINDERNIS!\nStrafschlag +1',
+                                                          textAlign: TextAlign.center,
+                                                          style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 18),
+                                                        ).animate().shake(),
+                                                      ],
+                                                    ),
+                                                  ),
+                                                ),
+                                            ],
+                                          ),
+                                        );
+                                      }
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    )
+                  : Column(
+                      children: [
+                        // Header Controls
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              IconButton(
+                                icon: Icon(Icons.arrow_back_ios_new_rounded, color: isDark ? Colors.white70 : Colors.black87),
+                                onPressed: _exitGame,
+                              ),
+                              Column(
+                                children: [
+                                  Text(
+                                    _currentLevel.name,
+                                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: isDark ? Colors.white : Colors.black87),
+                                  ),
+                                  Text(
+                                    _isTournamentMode 
+                                        ? 'Turnier: Loch ${_currentTournamentIndex + 1}/9 (Par ${_currentLevel.par})'
+                                        : 'Loch $_currentLevelId/50 (Par ${_currentLevel.par})',
+                                    style: const TextStyle(fontSize: 11, color: Colors.grey),
+                                  ),
+                                ],
+                              ),
+                              Row(
+                                children: [
+                                  IconButton(
+                                    icon: Stack(
+                                      clipBehavior: Clip.none,
+                                      children: [
+                                        Icon(Icons.chat_bubble_rounded, color: isDark ? Colors.white70 : Colors.black87, size: 24),
+                                        if (connService.unreadChatCount > 0)
+                                          Positioned(
+                                            right: -4,
+                                            top: -4,
+                                            child: Container(
+                                              padding: const EdgeInsets.all(2),
+                                              decoration: BoxDecoration(
+                                                color: const Color(0xFFFF007F),
+                                                shape: BoxShape.circle,
+                                                border: Border.all(color: isDark ? const Color(0xFF0F0B1E) : Colors.white, width: 1.5),
+                                              ),
+                                              constraints: const BoxConstraints(
+                                                minWidth: 16,
+                                                minHeight: 16,
+                                              ),
+                                              child: Text(
+                                                '${connService.unreadChatCount}',
+                                                style: const TextStyle(
+                                                  color: Colors.white,
+                                                  fontSize: 8,
+                                                  fontWeight: FontWeight.bold,
+                                                ),
+                                                textAlign: TextAlign.center,
+                                              ),
+                                            ),
+                                          ),
+                                      ],
+                                    ),
+                                    onPressed: () {
+                                      showModalBottomSheet(
+                                        context: context,
+                                        isScrollControlled: true,
+                                        backgroundColor: Colors.transparent,
+                                        builder: (_) => const ChatSheet(),
+                                      );
+                                    },
+                                  ),
+                                  const SizedBox(width: 8),
+                                  IconButton(
+                                    icon: Icon(Icons.replay_rounded, color: isDark ? Colors.white70 : Colors.black87),
+                                    onPressed: _resetLevel,
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ),
+                        ),
+
+                        // Game Info Panel
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                            children: [
+                              _buildStatusBadge('Du: $_strokeCount Schläge', _myTurn && isBallStationary && !_levelCompleted, Colors.greenAccent),
+                              _buildStatusBadge('${connService.connectedPeer?.name}: $_opponentStrokeCount Schläge', !_myTurn && isBallStationary && !_opponentCompleted, Colors.blueAccent),
+                            ],
+                          ),
+                        ),
+
+                        const SizedBox(height: 12),
+
+                        // Canvas Frame
+                        Expanded(
+                          child: Center(
+                            child: AspectRatio(
+                              aspectRatio: 360.0 / 500.0,
+                              child: Padding(
+                                padding: const EdgeInsets.all(12.0),
+                                child: Container(
+                                  decoration: BoxDecoration(
+                                    borderRadius: BorderRadius.circular(28),
+                                    border: Border.all(color: isDark ? Colors.white10 : Colors.black.withOpacity(0.08), width: 2),
+                                  ),
+                                  child: ClipRRect(
+                                    borderRadius: BorderRadius.circular(26),
+                                    child: LayoutBuilder(
+                                      builder: (context, constraints) {
+                                        return GestureDetector(
+                                          onPanStart: (details) {
+                                            if (!isBallStationary || _levelCompleted || !_myTurn) return;
+                                            final scaleX = 360.0 / constraints.maxWidth;
+                                            final scaleY = 500.0 / constraints.maxHeight;
+
+                                            final dx = details.localPosition.dx * scaleX;
+                                            final dy = details.localPosition.dy * scaleY;
+                                            final tapPos = Offset(dx, dy);
+
+                                            if ((tapPos - _ballPos).distance < 30.0) {
+                                              setState(() {
+                                                _dragStart = _ballPos;
+                                                _dragCurrent = tapPos;
+                                              });
+                                            }
+                                          },
+                                          onPanUpdate: (details) {
+                                            if (_dragStart == null) return;
+                                            final scaleX = 360.0 / constraints.maxWidth;
+                                            final scaleY = 500.0 / constraints.maxHeight;
+
+                                            setState(() {
+                                              _dragCurrent = Offset(
+                                                details.localPosition.dx * scaleX,
+                                                details.localPosition.dy * scaleY,
+                                              );
+                                            });
+                                          },
+                                          onPanEnd: (details) {
+                                            if (_dragStart == null || _dragCurrent == null) return;
+                                            final aimVector = _dragStart! - _dragCurrent!;
+                                            double dist = aimVector.distance;
+                                            if (dist > 5.0) {
+                                              final clampedDist = dist.clamp(0.0, _maxDragDist);
+                                              final normalizedVec = aimVector / dist;
+                                              _takeStroke(normalizedVec * clampedDist);
+                                            }
+                                            setState(() {
+                                              _dragStart = null;
+                                              _dragCurrent = null;
+                                            });
+                                          },
+                                          child: Stack(
+                                            children: [
+                                              CustomPaint(
+                                                size: Size.infinite,
+                                                painter: GolfPainter(
+                                                  level: _currentLevel,
+                                                  ballPos: _ballPos,
+                                                  ballRadius: _ballRadius,
+                                                  opponentBallPos: _opponentBallPos,
+                                                  opponentCompleted: _opponentCompleted,
+                                                  dragStart: _dragStart,
+                                                  dragCurrent: _dragCurrent,
+                                                  maxDrag: _maxDragDist,
+                                                  isDark: isDark,
+                                                ),
+                                              ),
+                                              if (_waterResetTriggered)
+                                                Container(
+                                                  color: Colors.black45,
+                                                  child: Center(
+                                                    child: Column(
+                                                      mainAxisSize: MainAxisSize.min,
+                                                      children: [
+                                                        const Icon(Icons.waves_rounded, size: 64, color: Color(0xFF00F2FE)),
+                                                        const SizedBox(height: 12),
+                                                        const Text(
+                                                          'WASSERHINDERNIS!\nStrafschlag +1',
+                                                          textAlign: TextAlign.center,
+                                                          style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 18),
+                                                        ).animate().shake(),
+                                                      ],
+                                                    ),
+                                                  ),
+                                                ),
+                                            ],
+                                          ),
+                                        );
+                                      }
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+
+                        // Game Selection / Tournament menu if not in level gameplay
+                        if (!_isTournamentMode && _strokeCount == 0 && isBallStationary)
+                          Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 8.0),
+                            child: Row(
+                              children: [
+                                Expanded(
+                                  child: ElevatedButton.icon(
+                                    style: ElevatedButton.styleFrom(
+                                      backgroundColor: const Color(0xFF8A2387).withOpacity(0.2),
+                                      foregroundColor: Colors.white,
+                                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                                      side: const BorderSide(color: Color(0xFF8A2387), width: 1),
+                                    ),
+                                    onPressed: _startTournament,
+                                    icon: const Icon(Icons.emoji_events_rounded, color: Colors.amber),
+                                    label: const Text('Turnier starten', style: TextStyle(fontWeight: FontWeight.bold)),
+                                  ),
+                                ),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: DropdownButtonHideUnderline(
+                                    child: DropdownButton<int>(
+                                      value: _currentLevelId,
+                                      dropdownColor: isDark ? const Color(0xFF1B1437) : Colors.white,
+                                      items: List.generate(50, (index) {
+                                        return DropdownMenuItem(
+                                          value: index + 1,
+                                          child: Text('Hole ${index + 1}', style: TextStyle(color: isDark ? Colors.white : Colors.black87, fontSize: 13, fontWeight: FontWeight.bold)),
+                                        );
+                                      }),
+                                      onChanged: (id) {
+                                        if (id != null) _loadLevel(id);
+                                      },
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+
+                        if (_isTournamentMode && isBallStationary)
+                          Padding(
+                            padding: const EdgeInsets.all(12.0),
+                            child: ElevatedButton(
+                              style: ElevatedButton.styleFrom(backgroundColor: Colors.redAccent.withOpacity(0.15), foregroundColor: Colors.redAccent),
+                              onPressed: _stopTournament,
+                              child: const Text('Turnier beenden', style: TextStyle(fontWeight: FontWeight.bold)),
+                            ),
+                          ),
+                        const SizedBox(height: 12),
+                      ],
                     ),
-                  ),
-                ),
-              ),
-
-              // Game Selection / Tournament menu if not in level gameplay
-              if (!_isTournamentMode && _strokeCount == 0 && isBallStationary)
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 8.0),
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: ElevatedButton.icon(
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: const Color(0xFF8A2387).withOpacity(0.2),
-                            foregroundColor: Colors.white,
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                            side: const BorderSide(color: Color(0xFF8A2387), width: 1),
-                          ),
-                          onPressed: _startTournament,
-                          icon: const Icon(Icons.emoji_events_rounded, color: Colors.amber),
-                          label: const Text('Turnier starten', style: TextStyle(fontWeight: FontWeight.bold)),
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: DropdownButtonHideUnderline(
-                          child: DropdownButton<int>(
-                            value: _currentLevelId,
-                            dropdownColor: isDark ? const Color(0xFF1B1437) : Colors.white,
-                            items: List.generate(50, (index) {
-                              return DropdownMenuItem(
-                                value: index + 1,
-                                child: Text('Hole ${index + 1}', style: TextStyle(color: isDark ? Colors.white : Colors.black87, fontSize: 13, fontWeight: FontWeight.bold)),
-                              );
-                            }),
-                            onChanged: (id) {
-                              if (id != null) _loadLevel(id);
-                            },
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-
-              if (_isTournamentMode && isBallStationary)
-                Padding(
-                  padding: const EdgeInsets.all(12.0),
-                  child: ElevatedButton(
-                    style: ElevatedButton.styleFrom(backgroundColor: Colors.redAccent.withOpacity(0.15), foregroundColor: Colors.redAccent),
-                    onPressed: _stopTournament,
-                    child: const Text('Turnier beenden', style: TextStyle(fontWeight: FontWeight.bold)),
-                  ),
-                ),
-
-              // Level Completed Overlay Scorecard
               if (_levelCompleted)
-                _buildScorecardOverlay(isDark, connService),
-
-              const SizedBox(height: 12),
+                _buildScorecardOverlay(context, isDark, connService),
             ],
           ),
         ),
@@ -845,7 +1082,8 @@ class _MinigolfScreenState extends State<MinigolfScreen> with SingleTickerProvid
     );
   }
 
-  Widget _buildScorecardOverlay(bool isDark, ConnectivityService connService) {
+  Widget _buildScorecardOverlay(BuildContext context, bool isDark, ConnectivityService connService) {
+    final isLandscape = MediaQuery.of(context).orientation == Orientation.landscape;
     final diff = _strokeCount - _currentLevel.par;
     final diffText = diff == 0
         ? 'Par'
@@ -853,62 +1091,103 @@ class _MinigolfScreenState extends State<MinigolfScreen> with SingleTickerProvid
         
     final isLastHole = _isTournamentMode && (_currentTournamentIndex == _tournamentHoles.length - 1);
     
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
-      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      decoration: BoxDecoration(
-        color: const Color(0xFF8A2387).withOpacity(0.15),
-        borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: const Color(0xFF8A2387).withOpacity(0.5), width: 1.5),
+    return Positioned.fill(
+      child: Container(
+        color: Colors.black.withOpacity(0.75),
+        child: BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 5, sigmaY: 5),
+          child: Center(
+            child: SingleChildScrollView(
+              child: Container(
+                width: isLandscape ? 420 : 310,
+                padding: const EdgeInsets.all(24),
+                margin: const EdgeInsets.symmetric(horizontal: 24),
+                decoration: BoxDecoration(
+                  color: isDark ? const Color(0xFF161B26) : Colors.white,
+                  borderRadius: BorderRadius.circular(28),
+                  border: Border.all(
+                    color: const Color(0xFF8A2387).withOpacity(0.6),
+                    width: 2,
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: const Color(0xFF8A2387).withOpacity(0.2),
+                      blurRadius: 20,
+                      spreadRadius: 2,
+                    ),
+                  ],
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(
+                      Icons.emoji_events_rounded,
+                      size: 64,
+                      color: Colors.amber,
+                    ).animate().scaleXY(begin: 0.8, end: 1.2, duration: 800.ms, curve: Curves.bounceOut),
+                    const SizedBox(height: 16),
+                    Text(
+                      _isTournamentMode && !isLastHole
+                          ? 'LOCH BEENDET!'
+                          : (_isTournamentMode ? 'TURNIER BEENDET!' : 'EINGELOCHT!'),
+                      style: const TextStyle(
+                        fontSize: 24,
+                        fontWeight: FontWeight.w900,
+                        letterSpacing: 2,
+                        color: Colors.greenAccent,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    if (!_isTournamentMode) ...[
+                      Text(
+                        'Du hast $_strokeCount Schläge benötigt (Par: ${_currentLevel.par}).\nResultat: $diffText',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          fontSize: 14,
+                          color: isDark ? Colors.white70 : Colors.black87,
+                        ),
+                      ),
+                    ] else ...[
+                      Text(
+                        'Dein Gesamt-Score: ${_tournamentScore + (_strokeCount - _currentLevel.par)}',
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.amber,
+                        ),
+                      ),
+                    ],
+                    const SizedBox(height: 24),
+                    ElevatedButton.icon(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFF8A2387),
+                        foregroundColor: Colors.white,
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                      ),
+                      onPressed: () {
+                        if (_isTournamentMode && isLastHole) {
+                          _stopTournament();
+                        } else {
+                          _nextLevel();
+                        }
+                      },
+                      icon: Icon(_isTournamentMode && isLastHole ? Icons.emoji_events : Icons.arrow_forward_rounded),
+                      label: Text(
+                        _isTournamentMode && isLastHole
+                            ? 'Turnier beenden & Score eintragen'
+                            : 'Nächstes Loch',
+                        style: const TextStyle(fontWeight: FontWeight.bold),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
       ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Text(
-            _isTournamentMode && !isLastHole
-                ? 'Loch Beendet!'
-                : (_isTournamentMode ? 'Turnier Beendet!' : 'Eingelocht!'),
-            style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w900, color: Colors.greenAccent),
-          ),
-          const SizedBox(height: 8),
-          
-          if (!_isTournamentMode) ...[
-            Text(
-              'Du hast $_strokeCount Schläge benötigt (Par: ${_currentLevel.par}). Resultat: $diffText',
-              textAlign: TextAlign.center,
-              style: TextStyle(fontSize: 13, color: isDark ? Colors.white70 : Colors.black87),
-            ),
-          ] else ...[
-            Text(
-              'Dein Gesamt-Score: ${_tournamentScore + (_strokeCount - _currentLevel.par)}',
-              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.amber),
-            ),
-          ],
-          
-          const SizedBox(height: 16),
-          ElevatedButton.icon(
-            style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFF8A2387),
-              foregroundColor: Colors.white,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-            ),
-            onPressed: () {
-              if (_isTournamentMode && isLastHole) {
-                _stopTournament();
-              } else {
-                _nextLevel();
-              }
-            },
-            icon: Icon(_isTournamentMode && isLastHole ? Icons.emoji_events : Icons.arrow_forward_rounded),
-            label: Text(
-              _isTournamentMode && isLastHole
-                  ? 'Turnier beenden & Score eintragen'
-                  : 'Nächstes Loch',
-              style: const TextStyle(fontWeight: FontWeight.bold),
-            ),
-          ),
-        ],
-      ).animate().scaleXY(begin: 0.8, end: 1.0, duration: 350.ms, curve: Curves.bounceOut),
     );
   }
 }

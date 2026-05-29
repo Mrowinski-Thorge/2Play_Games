@@ -220,6 +220,48 @@ class _ChatSheetState extends State<ChatSheet> {
             ),
           ),
           const Divider(height: 1, thickness: 1),
+          
+          // Quick emoji reactions row
+          Container(
+            height: 48,
+            padding: const EdgeInsets.symmetric(vertical: 6),
+            child: ListView(
+              scrollDirection: Axis.horizontal,
+              physics: const BouncingScrollPhysics(),
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+              children: [
+                '👍', '❤️', '😂', '🔥', '👏', '😮', '😢', '🎮', '🎉', '👑', '🤔', '💯'
+              ].map((emoji) {
+                return Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 4),
+                  child: InkWell(
+                    onTap: () {
+                      connService.sendChatMessage(emoji);
+                      Future.delayed(const Duration(milliseconds: 100), _scrollToBottom);
+                    },
+                    borderRadius: BorderRadius.circular(20),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 12),
+                      alignment: Alignment.center,
+                      decoration: BoxDecoration(
+                        color: isDark ? Colors.white.withOpacity(0.05) : Colors.black.withOpacity(0.04),
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(
+                          color: isDark ? Colors.white10 : Colors.black.withOpacity(0.06),
+                        ),
+                      ),
+                      child: Text(
+                        emoji,
+                        style: const TextStyle(fontSize: 18),
+                      ),
+                    ),
+                  ),
+                );
+              }).toList(),
+            ),
+          ),
+          
+          const Divider(height: 1, thickness: 1),
 
           // Message Input Field
           Padding(

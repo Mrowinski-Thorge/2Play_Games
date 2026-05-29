@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:flutter_animate/flutter_animate.dart';
@@ -206,7 +207,10 @@ class _ConnectFourScreenState extends State<ConnectFourScreen> {
   }
 
   void _exitGame() {
-    Provider.of<ConnectivityService>(context, listen: false).exitGame();
+    final connService = Provider.of<ConnectivityService>(context, listen: false);
+    if (connService.isHost) {
+      connService.exitGame();
+    }
     Navigator.of(context).pop();
   }
 
@@ -224,6 +228,7 @@ class _ConnectFourScreenState extends State<ConnectFourScreen> {
     }
 
     final isMyTurn = _currentTurn == _myPlayerNumber;
+    final isLandscape = MediaQuery.of(context).orientation == Orientation.landscape;
 
     return Scaffold(
       body: Container(
@@ -240,295 +245,402 @@ class _ConnectFourScreenState extends State<ConnectFourScreen> {
                   colors: [Color(0xFFF4F6FB), Color(0xFFE9EEF6), Color(0xFFF7F8FC)],
                 ),
         ),
-        child: SafeArea(
-          child: Column(
-            children: [
-              // Header
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    IconButton(
-                      icon: Icon(Icons.arrow_back_ios_new_rounded, color: isDark ? Colors.white70 : Colors.black87),
-                      onPressed: _exitGame,
-                    ),
-                    Text(
-                      'Vier Gewinnt',
-                      style: TextStyle(
-                        fontSize: 20,
-                        fontWeight: FontWeight.bold,
-                        color: isDark ? Colors.white : Colors.black87,
-                      ),
-                    ),
-                    IconButton(
-                      icon: Stack(
-                        clipBehavior: Clip.none,
-                        children: [
-                          Icon(Icons.chat_bubble_rounded, color: isDark ? Colors.white70 : Colors.black87, size: 24),
-                          if (connService.unreadChatCount > 0)
-                            Positioned(
-                              right: -4,
-                              top: -4,
-                              child: Container(
-                                padding: const EdgeInsets.all(2),
-                                decoration: BoxDecoration(
-                                  color: const Color(0xFFFF007F),
-                                  shape: BoxShape.circle,
-                                  border: Border.all(color: isDark ? const Color(0xFF0F0B1E) : Colors.white, width: 1.5),
-                                ),
-                                constraints: const BoxConstraints(
-                                  minWidth: 16,
-                                  minHeight: 16,
-                                ),
-                                child: Text(
-                                  '${connService.unreadChatCount}',
-                                  style: const TextStyle(
-                                    color: Colors.white,
-                                    fontSize: 8,
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                                  textAlign: TextAlign.center,
-                                ),
-                              ),
-                            ),
-                        ],
-                      ),
-                      onPressed: () {
-                        showModalBottomSheet(
-                          context: context,
-                          isScrollControlled: true,
-                          backgroundColor: Colors.transparent,
-                          builder: (_) => const ChatSheet(),
-                        );
-                      },
-                    ),
-                  ],
-                ),
-              ),
-
-              const SizedBox(height: 16),
-
-              // Player Info Panels
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 20),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                  children: [
-                    _buildPlayerLabel(
-                      context,
-                      'Du',
-                      isMyTurn && !_isGameOver,
-                      _myPlayerNumber == 1 ? AppTheme.accentNeonPink : AppTheme.accentNeonCyan,
-                    ),
-                    Text(
-                      'VS',
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w900,
-                        color: isDark ? Colors.white30 : Colors.black38,
-                      ),
-                    ),
-                    _buildPlayerLabel(
-                      context,
-                      connService.connectedPeer?.name ?? 'Gegner',
-                      !isMyTurn && !_isGameOver,
-                      _opponentPlayerNumber == 1 ? AppTheme.accentNeonPink : AppTheme.accentNeonCyan,
-                    ),
-                  ],
-                ),
-              ),
-
-              const Spacer(),
-
-              // Game Board Container
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                child: GlassContainer(
-                  padding: const EdgeInsets.all(12),
-                  borderRadius: 24,
-                  child: Column(
-                    children: [
-                      // Column Selectors indicators
-                      Row(
-                        children: List.generate(7, (colIndex) {
-                          final colFull = _board[colIndex][0] != 0;
-                          return Expanded(
-                            child: GestureDetector(
-                              onTap: () => _playColumn(colIndex),
-                              child: Container(
-                                height: 32,
-                                margin: const EdgeInsets.symmetric(horizontal: 2),
-                                decoration: BoxDecoration(
-                                  color: isMyTurn && !colFull && !_isGameOver
-                                      ? (_myPlayerNumber == 1 ? AppTheme.accentNeonPink : AppTheme.accentNeonCyan).withOpacity(0.1)
-                                      : Colors.transparent,
-                                  borderRadius: BorderRadius.circular(8),
-                                ),
-                                child: Icon(
-                                  Icons.arrow_downward_rounded,
-                                  size: 16,
-                                  color: isMyTurn && !colFull && !_isGameOver
-                                      ? (_myPlayerNumber == 1 ? AppTheme.accentNeonPink : AppTheme.accentNeonCyan)
-                                      : Colors.transparent,
-                                ),
-                              ),
-                            ),
-                          );
-                        }),
-                      ),
-                      
-                      const SizedBox(height: 8),
-
-                      // Grid Box
-                      Container(
-                        padding: const EdgeInsets.all(8),
-                        decoration: BoxDecoration(
-                          color: isDark ? Colors.black.withOpacity(0.3) : Colors.black.withOpacity(0.04),
-                          borderRadius: BorderRadius.circular(16),
-                        ),
-                        child: Row(
-                          children: List.generate(7, (colIndex) {
-                            return Expanded(
-                              child: Column(
-                                children: List.generate(6, (rowIndex) {
-                                  final cellVal = _board[colIndex][rowIndex];
-                                  final isLastMove = colIndex == _lastCol && rowIndex == _lastRow;
-                                  
-                                  return AspectRatio(
-                                    aspectRatio: 1.0,
-                                    child: GestureDetector(
-                                      onTap: () => _playColumn(colIndex),
-                                      child: Container(
-                                        margin: const EdgeInsets.all(3),
-                                        decoration: BoxDecoration(
-                                          shape: BoxShape.circle,
-                                          color: isDark ? const Color(0xFF0F0B1E) : Colors.white,
-                                          border: Border.all(
-                                            color: isDark ? Colors.white10 : Colors.black.withOpacity(0.08),
-                                          ),
-                                        ),
-                                        child: cellVal == 0
-                                            ? const SizedBox()
-                                            : Container(
-                                                margin: const EdgeInsets.all(2),
-                                                decoration: BoxDecoration(
-                                                  shape: BoxShape.circle,
-                                                  gradient: LinearGradient(
-                                                    colors: cellVal == 1
-                                                        ? [AppTheme.accentNeonPink, const Color(0xFFFF007F)]
-                                                        : [AppTheme.accentNeonCyan, const Color(0xFF4FACFE)],
-                                                  ),
-                                                  boxShadow: isDark
-                                                      ? AppTheme.neonGlow(cellVal == 1 ? AppTheme.accentNeonPink : AppTheme.accentNeonCyan)
-                                                      : AppTheme.softShadow,
-                                                ),
-                                              )
-                                                .animate(target: isLastMove ? 1.0 : 0.0)
-                                                .scaleXY(begin: 0.1, end: 1.0, duration: 300.ms, curve: Curves.bounceOut)
-                                                .shake(duration: 250.ms),
-                                      ),
-                                    ),
-                                  );
-                                }),
-                              ),
-                            );
-                          }),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-
-              const Spacer(),
-
-              // Game Status
-              if (!_isGameOver)
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-                  decoration: BoxDecoration(
-                    color: isMyTurn
-                        ? (isDark ? const Color(0xFF8A2387).withOpacity(0.1) : Colors.purple.withOpacity(0.05))
-                        : Colors.transparent,
-                    borderRadius: BorderRadius.circular(20),
-                  ),
-                  child: Text(
-                    isMyTurn ? 'Du bist dran!' : 'Gegner überlegt...',
-                    style: TextStyle(
-                      fontSize: 15,
-                      fontWeight: FontWeight.bold,
-                      color: isMyTurn
-                          ? (isDark ? const Color(0xFF00F2FE) : const Color(0xFF8A2387))
-                          : (isDark ? Colors.white60 : Colors.black54),
-                    ),
-                  ),
-                ),
-
-              // Game Over dialog
-              if (_isGameOver)
-                Padding(
-                  padding: const EdgeInsets.all(20.0),
-                  child: GlassContainer(
-                    padding: const EdgeInsets.all(20),
-                    borderRadius: 24,
-                    gradientColors: [
-                      const Color(0xFF8A2387).withOpacity(0.3),
-                      const Color(0xFF00F2FE).withOpacity(0.1),
-                    ],
-                    child: Column(
+        child: Stack(
+          children: [
+            SafeArea(
+              child: isLandscape
+                  ? Row(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
-                        Text(
-                          _winnerNum == 3
-                              ? 'Unentschieden!'
-                              : (_winnerNum == _myPlayerNumber ? 'Gewonnen!' : 'Verloren!'),
-                          style: TextStyle(
-                            fontSize: 28,
-                            fontWeight: FontWeight.w900,
-                            color: _winnerNum == 3
-                                ? Colors.amberAccent
-                                : (_winnerNum == _myPlayerNumber ? Colors.greenAccent : Colors.redAccent),
-                          ),
-                        ),
-                        const SizedBox(height: 8),
-                        Text(
-                          _winnerNum == 3
-                              ? 'Ein knappes Unentschieden!'
-                              : (_winnerNum == _myPlayerNumber
-                                  ? 'Klasse Kombination, du hast gewonnen!'
-                                  : 'Gegner hat eine 4er-Reihe gebildet!'),
-                          style: TextStyle(fontSize: 13, color: isDark ? Colors.white70 : Colors.black87),
-                        ),
-                        const SizedBox(height: 20),
-                        ElevatedButton.icon(
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: const Color(0xFF8A2387),
-                            foregroundColor: Colors.white,
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(14),
+                        // Left column: Stats, turn status, controls
+                        Expanded(
+                          flex: 4,
+                          child: SingleChildScrollView(
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                _buildHeader(context, connService, isDark),
+                                const SizedBox(height: 16),
+                                _buildPlayerStats(context, connService, isMyTurn),
+                                const SizedBox(height: 24),
+                                if (!_isGameOver) _buildTurnStatus(isMyTurn, isDark),
+                              ],
                             ),
-                            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
                           ),
-                          onPressed: _waitingForResetAccept ? null : _requestReset,
-                          icon: _waitingForResetAccept
-                              ? const SizedBox(
-                                  width: 14,
-                                  height: 14,
-                                  child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
-                                )
-                              : const Icon(Icons.replay_rounded),
-                          label: Text(
-                            _waitingForResetAccept ? 'Warte auf Gegner...' : 'Nochmal spielen',
-                            style: const TextStyle(fontWeight: FontWeight.bold),
+                        ),
+                        // Right column: Sized game board
+                        Expanded(
+                          flex: 5,
+                          child: Center(
+                            child: AspectRatio(
+                              aspectRatio: 7.0 / 6.5,
+                              child: Padding(
+                                padding: const EdgeInsets.all(12.0),
+                                child: _buildBoardWidget(context, isDark, isMyTurn),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    )
+                  : Column(
+                      children: [
+                        _buildHeader(context, connService, isDark),
+                        const SizedBox(height: 16),
+                        _buildPlayerStats(context, connService, isMyTurn),
+                        const Spacer(),
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 16),
+                          child: _buildBoardWidget(context, isDark, isMyTurn),
+                        ),
+                        const Spacer(),
+                        if (!_isGameOver) _buildTurnStatus(isMyTurn, isDark),
+                        const Spacer(),
+                      ],
+                    ),
+            ),
+            if (_isGameOver) _buildGameOverOverlay(context, isDark, connService),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildHeader(BuildContext context, ConnectivityService connService, bool isDark) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          IconButton(
+            icon: Icon(Icons.arrow_back_ios_new_rounded, color: isDark ? Colors.white70 : Colors.black87),
+            onPressed: _exitGame,
+          ),
+          Text(
+            'Vier Gewinnt',
+            style: TextStyle(
+              fontSize: 20,
+              fontWeight: FontWeight.bold,
+              color: isDark ? Colors.white : Colors.black87,
+            ),
+          ),
+          IconButton(
+            icon: Stack(
+              clipBehavior: Clip.none,
+              children: [
+                Icon(Icons.chat_bubble_rounded, color: isDark ? Colors.white70 : Colors.black87, size: 24),
+                if (connService.unreadChatCount > 0)
+                  Positioned(
+                    right: -4,
+                    top: -4,
+                    child: Container(
+                      padding: const EdgeInsets.all(2),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFFF007F),
+                        shape: BoxShape.circle,
+                        border: Border.all(color: isDark ? const Color(0xFF0F0B1E) : Colors.white, width: 1.5),
+                      ),
+                      constraints: const BoxConstraints(
+                        minWidth: 16,
+                        minHeight: 16,
+                      ),
+                      child: Text(
+                        '${connService.unreadChatCount}',
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 8,
+                          fontWeight: FontWeight.bold,
+                        ),
+                        textAlign: TextAlign.center,
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+            onPressed: () {
+              showModalBottomSheet(
+                context: context,
+                isScrollControlled: true,
+                backgroundColor: Colors.transparent,
+                builder: (_) => const ChatSheet(),
+              );
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPlayerStats(BuildContext context, ConnectivityService connService, bool isMyTurn) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 20),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+        children: [
+          _buildPlayerLabel(
+            context,
+            'Du',
+            isMyTurn && !_isGameOver,
+            _myPlayerNumber == 1 ? AppTheme.accentNeonPink : AppTheme.accentNeonCyan,
+          ),
+          Text(
+            'VS',
+            style: TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.w900,
+              color: isDark ? Colors.white30 : Colors.black38,
+            ),
+          ),
+          _buildPlayerLabel(
+            context,
+            connService.connectedPeer?.name ?? 'Gegner',
+            !isMyTurn && !_isGameOver,
+            _opponentPlayerNumber == 1 ? AppTheme.accentNeonPink : AppTheme.accentNeonCyan,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildBoardWidget(BuildContext context, bool isDark, bool isMyTurn) {
+    return GlassContainer(
+      padding: const EdgeInsets.all(8),
+      borderRadius: 24,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // Column Selectors indicators
+          Row(
+            children: List.generate(7, (colIndex) {
+              final colFull = _board[colIndex][0] != 0;
+              return Expanded(
+                child: GestureDetector(
+                  onTap: () => _playColumn(colIndex),
+                  child: Container(
+                    height: 28,
+                    margin: const EdgeInsets.symmetric(horizontal: 2),
+                    decoration: BoxDecoration(
+                      color: isMyTurn && !colFull && !_isGameOver
+                          ? (_myPlayerNumber == 1 ? AppTheme.accentNeonPink : AppTheme.accentNeonCyan).withOpacity(0.1)
+                          : Colors.transparent,
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Icon(
+                      Icons.arrow_downward_rounded,
+                      size: 14,
+                      color: isMyTurn && !colFull && !_isGameOver
+                          ? (_myPlayerNumber == 1 ? AppTheme.accentNeonPink : AppTheme.accentNeonCyan)
+                          : Colors.transparent,
+                    ),
+                  ),
+                ),
+              );
+            }),
+          ),
+          
+          const SizedBox(height: 4),
+
+          // Grid Box
+          Expanded(
+            child: Container(
+              padding: const EdgeInsets.all(6),
+              decoration: BoxDecoration(
+                color: isDark ? Colors.black.withOpacity(0.3) : Colors.black.withOpacity(0.04),
+                borderRadius: BorderRadius.circular(16),
+              ),
+              child: Row(
+                children: List.generate(7, (colIndex) {
+                  return Expanded(
+                    child: Column(
+                      children: List.generate(6, (rowIndex) {
+                        final cellVal = _board[colIndex][rowIndex];
+                        final isLastMove = colIndex == _lastCol && rowIndex == _lastRow;
+                        
+                        return Expanded(
+                          child: GestureDetector(
+                            onTap: () => _playColumn(colIndex),
+                            child: Container(
+                              margin: const EdgeInsets.all(2),
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                color: isDark ? const Color(0xFF0F0B1E) : Colors.white,
+                                border: Border.all(
+                                  color: isDark ? Colors.white10 : Colors.black.withOpacity(0.08),
+                                ),
+                              ),
+                              child: cellVal == 0
+                                  ? const SizedBox()
+                                  : Container(
+                                      margin: const EdgeInsets.all(1.5),
+                                      decoration: BoxDecoration(
+                                        shape: BoxShape.circle,
+                                        gradient: LinearGradient(
+                                          colors: cellVal == 1
+                                              ? [AppTheme.accentNeonPink, const Color(0xFFFF007F)]
+                                              : [AppTheme.accentNeonCyan, const Color(0xFF4FACFE)],
+                                        ),
+                                        boxShadow: isDark
+                                            ? AppTheme.neonGlow(cellVal == 1 ? AppTheme.accentNeonPink : AppTheme.accentNeonCyan)
+                                            : AppTheme.softShadow,
+                                      ),
+                                    )
+                                      .animate(target: isLastMove ? 1.0 : 0.0)
+                                      .scaleXY(begin: 0.1, end: 1.0, duration: 300.ms, curve: Curves.bounceOut)
+                                      .shake(duration: 250.ms),
+                            ),
+                          ),
+                        );
+                      }),
+                    ),
+                  );
+                }),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTurnStatus(bool isMyTurn, bool isDark) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+      decoration: BoxDecoration(
+        color: isMyTurn
+            ? (isDark ? const Color(0xFF8A2387).withOpacity(0.1) : Colors.purple.withOpacity(0.05))
+            : Colors.transparent,
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Text(
+        isMyTurn ? 'Du bist dran!' : 'Gegner überlegt...',
+        style: TextStyle(
+          fontSize: 15,
+          fontWeight: FontWeight.bold,
+          color: isMyTurn
+              ? (isDark ? const Color(0xFF00F2FE) : const Color(0xFF8A2387))
+              : (isDark ? Colors.white60 : Colors.black54),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildGameOverOverlay(BuildContext context, bool isDark, ConnectivityService connService) {
+    final isLandscape = MediaQuery.of(context).orientation == Orientation.landscape;
+    final isWin = _winnerNum == _myPlayerNumber;
+    final isDraw = _winnerNum == 3;
+
+    final winColor = isWin
+        ? Colors.greenAccent
+        : (isDraw ? Colors.amberAccent : Colors.redAccent);
+
+    final title = isDraw
+        ? 'UNENTSCHIEDEN!'
+        : (isWin ? 'GEWONNEN!' : 'VERLOREN!');
+
+    final desc = isDraw
+        ? 'Ein knappes Unentschieden!'
+        : (isWin
+            ? 'Klasse Kombination, du hast gewonnen!'
+            : 'Gegner hat eine 4er-Reihe gebildet!');
+
+    return Positioned.fill(
+      child: Container(
+        color: Colors.black.withOpacity(0.75),
+        child: BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 5, sigmaY: 5),
+          child: Center(
+            child: SingleChildScrollView(
+              child: Container(
+                width: isLandscape ? 420 : 310,
+                padding: const EdgeInsets.all(24),
+                margin: const EdgeInsets.symmetric(horizontal: 24),
+                decoration: BoxDecoration(
+                  color: isDark ? const Color(0xFF161B26) : Colors.white,
+                  borderRadius: BorderRadius.circular(28),
+                  border: Border.all(
+                    color: winColor.withOpacity(0.6),
+                    width: 2,
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: winColor.withOpacity(0.2),
+                      blurRadius: 20,
+                      spreadRadius: 2,
+                    ),
+                  ],
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      isWin
+                          ? Icons.emoji_events_rounded
+                          : (isDraw ? Icons.handshake_rounded : Icons.sentiment_very_dissatisfied_rounded),
+                      size: 64,
+                      color: winColor,
+                    ).animate().scaleXY(begin: 0.8, end: 1.2, duration: 800.ms, curve: Curves.bounceOut),
+                    const SizedBox(height: 16),
+                    Text(
+                      title,
+                      style: TextStyle(
+                        fontSize: 24,
+                        fontWeight: FontWeight.w900,
+                        letterSpacing: 2,
+                        color: winColor,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    Text(
+                      desc,
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        fontSize: 14,
+                        color: isDark ? Colors.white70 : Colors.black87,
+                      ),
+                    ),
+                    const SizedBox(height: 24),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: OutlinedButton(
+                            style: OutlinedButton.styleFrom(
+                              side: BorderSide(color: isDark ? Colors.white24 : Colors.black26),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                              padding: const EdgeInsets.symmetric(vertical: 12),
+                            ),
+                            onPressed: _exitGame,
+                            child: Text(
+                              'Beenden',
+                              style: TextStyle(color: isDark ? Colors.white : Colors.black87, fontWeight: FontWeight.bold),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: ElevatedButton(
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: const Color(0xFF8A2387),
+                              foregroundColor: Colors.white,
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                              padding: const EdgeInsets.symmetric(vertical: 12),
+                            ),
+                            onPressed: _waitingForResetAccept ? null : _requestReset,
+                            child: _waitingForResetAccept
+                                ? const SizedBox(
+                                    width: 18,
+                                    height: 18,
+                                    child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                                  )
+                                : const Text('Revanche', style: TextStyle(fontWeight: FontWeight.bold)),
                           ),
                         ),
                       ],
                     ),
-                  ),
-                ).animate().scaleXY(begin: 0.8, end: 1.0, duration: 400.ms, curve: Curves.bounceOut),
-
-              const Spacer(),
-            ],
+                  ],
+                ),
+              ),
+            ),
           ),
         ),
       ),

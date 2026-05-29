@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:flutter_animate/flutter_animate.dart';
@@ -294,7 +295,10 @@ class _BattleshipScreenState extends State<BattleshipScreen> with SingleTickerPr
   }
 
   void _exitGame() {
-    Provider.of<ConnectivityService>(context, listen: false).exitGame();
+    final connService = Provider.of<ConnectivityService>(context, listen: false);
+    if (connService.isHost) {
+      connService.exitGame();
+    }
     Navigator.of(context).pop();
   }
 
@@ -311,6 +315,8 @@ class _BattleshipScreenState extends State<BattleshipScreen> with SingleTickerPr
       return const SizedBox();
     }
 
+    final isLandscape = MediaQuery.of(context).orientation == Orientation.landscape;
+
     return Scaffold(
       body: Container(
         decoration: BoxDecoration(
@@ -326,79 +332,84 @@ class _BattleshipScreenState extends State<BattleshipScreen> with SingleTickerPr
                   colors: [Color(0xFFF4F6FB), Color(0xFFE9EEF6), Color(0xFFF7F8FC)],
                 ),
         ),
-        child: SafeArea(
-          child: Column(
-            children: [
-              // Header
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    IconButton(
-                      icon: Icon(Icons.arrow_back_ios_new_rounded, color: isDark ? Colors.white70 : Colors.black87),
-                      onPressed: _exitGame,
-                    ),
-                    Text(
-                      'Schiffe Versenken',
-                      style: TextStyle(
-                        fontSize: 20,
-                        fontWeight: FontWeight.bold,
-                        color: isDark ? Colors.white : Colors.black87,
-                      ),
-                    ),
-                    IconButton(
-                      icon: Stack(
-                        clipBehavior: Clip.none,
-                        children: [
-                          Icon(Icons.chat_bubble_rounded, color: isDark ? Colors.white70 : Colors.black87, size: 24),
-                          if (connService.unreadChatCount > 0)
-                            Positioned(
-                              right: -4,
-                              top: -4,
-                              child: Container(
-                                padding: const EdgeInsets.all(2),
-                                decoration: BoxDecoration(
-                                  color: const Color(0xFFFF007F),
-                                  shape: BoxShape.circle,
-                                  border: Border.all(color: isDark ? const Color(0xFF0F0B1E) : Colors.white, width: 1.5),
-                                ),
-                                constraints: const BoxConstraints(
-                                  minWidth: 16,
-                                  minHeight: 16,
-                                ),
-                                child: Text(
-                                  '${connService.unreadChatCount}',
-                                  style: const TextStyle(
-                                    color: Colors.white,
-                                    fontSize: 8,
-                                    fontWeight: FontWeight.bold,
+        child: Stack(
+          children: [
+            SafeArea(
+              child: Column(
+                children: [
+                  // Header
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        IconButton(
+                          icon: Icon(Icons.arrow_back_ios_new_rounded, color: isDark ? Colors.white70 : Colors.black87),
+                          onPressed: _exitGame,
+                        ),
+                        Text(
+                          'Schiffe Versenken',
+                          style: TextStyle(
+                            fontSize: 20,
+                            fontWeight: FontWeight.bold,
+                            color: isDark ? Colors.white : Colors.black87,
+                          ),
+                        ),
+                        IconButton(
+                          icon: Stack(
+                            clipBehavior: Clip.none,
+                            children: [
+                              Icon(Icons.chat_bubble_rounded, color: isDark ? Colors.white70 : Colors.black87, size: 24),
+                              if (connService.unreadChatCount > 0)
+                                Positioned(
+                                  right: -4,
+                                  top: -4,
+                                  child: Container(
+                                    padding: const EdgeInsets.all(2),
+                                    decoration: BoxDecoration(
+                                      color: const Color(0xFFFF007F),
+                                      shape: BoxShape.circle,
+                                      border: Border.all(color: isDark ? const Color(0xFF0F0B1E) : Colors.white, width: 1.5),
+                                    ),
+                                    constraints: const BoxConstraints(
+                                      minWidth: 16,
+                                      minHeight: 16,
+                                    ),
+                                    child: Text(
+                                      '${connService.unreadChatCount}',
+                                      style: const TextStyle(
+                                        color: Colors.white,
+                                        fontSize: 8,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                      textAlign: TextAlign.center,
+                                    ),
                                   ),
-                                  textAlign: TextAlign.center,
                                 ),
-                              ),
-                            ),
-                        ],
-                      ),
-                      onPressed: () {
-                        showModalBottomSheet(
-                          context: context,
-                          isScrollControlled: true,
-                          backgroundColor: Colors.transparent,
-                          builder: (_) => const ChatSheet(),
-                        );
-                      },
+                            ],
+                          ),
+                          onPressed: () {
+                            showModalBottomSheet(
+                              context: context,
+                              isScrollControlled: true,
+                              backgroundColor: Colors.transparent,
+                              builder: (_) => const ChatSheet(),
+                            );
+                          },
+                        ),
+                      ],
                     ),
-                  ],
-                ),
-              ),
+                  ),
 
-              if (_isPlacementPhase)
-                Expanded(child: _buildPlacementView(isDark))
-              else
-                Expanded(child: _buildBattleView(isDark, connService)),
-            ],
-          ),
+                  if (_isPlacementPhase)
+                    Expanded(child: _buildPlacementView(isDark))
+                  else
+                    Expanded(child: _buildBattleView(isDark, connService)),
+                ],
+              ),
+            ),
+            if (_isGameOver) _buildGameOverOverlay(context, isDark, connService),
+          ],
         ),
       ),
     );
@@ -406,6 +417,103 @@ class _BattleshipScreenState extends State<BattleshipScreen> with SingleTickerPr
 
   Widget _buildPlacementView(bool isDark) {
     final remainingShips = _shipSizes.length - _currentShipIndex;
+    final isLandscape = MediaQuery.of(context).orientation == Orientation.landscape;
+
+    if (isLandscape) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            // Left column: Instructions and orientation toggles
+            Expanded(
+              flex: 4,
+              child: SingleChildScrollView(
+                child: Column(
+                  children: [
+                    // Help card
+                    GlassContainer(
+                      padding: const EdgeInsets.all(12),
+                      borderRadius: 16,
+                      child: Row(
+                        children: [
+                          Icon(
+                            Icons.help_outline_rounded,
+                            color: isDark ? const Color(0xFF00F2FE) : const Color(0xFF8A2387),
+                            size: 20,
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              _iAmReady
+                                  ? 'Warte auf Gegner...'
+                                  : 'Platziere Schiffe. Tippe auf das Gitter.',
+                              style: TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.bold,
+                                color: isDark ? Colors.white70 : Colors.black87,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    // Placement Controls
+                    if (!_iAmReady)
+                      GlassContainer(
+                        padding: const EdgeInsets.all(12),
+                        borderRadius: 16,
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            Text(
+                              'Nächstes Schiff: Gr. ${_shipSizes[_currentShipIndex]}',
+                              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                            ),
+                            Text(
+                              'Noch $remainingShips Schiffe zu platzieren',
+                              style: const TextStyle(color: Colors.grey, fontSize: 10),
+                            ),
+                            const SizedBox(height: 12),
+                            ElevatedButton.icon(
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: const Color(0xFF8A2387),
+                                foregroundColor: Colors.white,
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                                padding: const EdgeInsets.symmetric(vertical: 10),
+                              ),
+                              onPressed: () {
+                                setState(() {
+                                  _isHorizontal = !_isHorizontal;
+                                });
+                              },
+                              icon: Icon(_isHorizontal ? Icons.swap_horiz_rounded : Icons.swap_vert_rounded, size: 16),
+                              label: Text(_isHorizontal ? 'Horizontal' : 'Vertikal', style: const TextStyle(fontSize: 12)),
+                            ),
+                          ],
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(width: 16),
+            // Right column: placement grid
+            Expanded(
+              flex: 5,
+              child: Center(
+                child: AspectRatio(
+                  aspectRatio: 1.0,
+                  child: _buildPlacementGrid(isDark),
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16.0),
       child: Column(
@@ -484,42 +592,7 @@ class _BattleshipScreenState extends State<BattleshipScreen> with SingleTickerPr
           // Grid View
           AspectRatio(
             aspectRatio: 1.0,
-            child: GlassContainer(
-              borderRadius: 24,
-              padding: const EdgeInsets.all(12),
-              child: GridView.builder(
-                physics: const NeverScrollableScrollPhysics(),
-                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                  crossAxisCount: 10,
-                ),
-                itemCount: 100,
-                itemBuilder: (context, index) {
-                  final x = index % 10;
-                  final y = index ~/ 10;
-                  final cellVal = _myBoard[y][x];
-
-                  return GestureDetector(
-                    onTap: () => _placeShip(x, y),
-                    child: Container(
-                      decoration: BoxDecoration(
-                        color: cellVal == 1
-                            ? const Color(0xFF8A2387).withOpacity(0.5)
-                            : (isDark ? Colors.white.withOpacity(0.02) : Colors.black.withOpacity(0.01)),
-                        border: Border.all(
-                          color: isDark ? Colors.white10 : Colors.black.withOpacity(0.05),
-                          width: 0.5,
-                        ),
-                      ),
-                      child: cellVal == 1
-                          ? const Center(
-                              child: Icon(Icons.directions_boat_rounded, size: 14, color: Colors.white),
-                            )
-                          : const SizedBox(),
-                    ),
-                  );
-                },
-              ),
-            ),
+            child: _buildPlacementGrid(isDark),
           ),
 
           const Spacer(),
@@ -528,7 +601,128 @@ class _BattleshipScreenState extends State<BattleshipScreen> with SingleTickerPr
     );
   }
 
+  Widget _buildPlacementGrid(bool isDark) {
+    return GlassContainer(
+      borderRadius: 24,
+      padding: const EdgeInsets.all(12),
+      child: GridView.builder(
+        physics: const NeverScrollableScrollPhysics(),
+        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+          crossAxisCount: 10,
+        ),
+        itemCount: 100,
+        itemBuilder: (context, index) {
+          final x = index % 10;
+          final y = index ~/ 10;
+          final cellVal = _myBoard[y][x];
+
+          return GestureDetector(
+            onTap: () => _placeShip(x, y),
+            child: Container(
+              decoration: BoxDecoration(
+                color: cellVal == 1
+                    ? const Color(0xFF8A2387).withOpacity(0.5)
+                    : (isDark ? Colors.white.withOpacity(0.02) : Colors.black.withOpacity(0.01)),
+                border: Border.all(
+                  color: isDark ? Colors.white10 : Colors.black.withOpacity(0.05),
+                  width: 0.5,
+                ),
+              ),
+              child: cellVal == 1
+                  ? const Center(
+                      child: Icon(Icons.directions_boat_rounded, size: 14, color: Colors.white),
+                    )
+                  : const SizedBox(),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
   Widget _buildBattleView(bool isDark, ConnectivityService service) {
+    final isLandscape = MediaQuery.of(context).orientation == Orientation.landscape;
+
+    if (isLandscape) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+        child: Column(
+          children: [
+            // Turn Status / Game Over info bar
+            if (!_isGameOver)
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
+                margin: const EdgeInsets.only(bottom: 8),
+                decoration: BoxDecoration(
+                  color: _myTurn
+                      ? (isDark ? const Color(0xFF8A2387).withOpacity(0.1) : Colors.purple.withOpacity(0.05))
+                      : Colors.transparent,
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: Text(
+                  _myTurn ? 'Du bist am Zug! Feuere!' : 'Gegner wählt Ziel...',
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.bold,
+                    color: _myTurn
+                        ? (isDark ? const Color(0xFF00F2FE) : const Color(0xFF8A2387))
+                        : (isDark ? Colors.white60 : Colors.black54),
+                  ),
+                ),
+              ),
+            // The two grids side-by-side
+            Expanded(
+              child: Row(
+                children: [
+                  // My fleet grid (Mein Ozean)
+                  Expanded(
+                    child: Column(
+                      children: [
+                        const Text(
+                          'Meine Flotte',
+                          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.grey),
+                        ),
+                        const SizedBox(height: 4),
+                        Expanded(
+                          child: Center(
+                            child: AspectRatio(
+                              aspectRatio: 1.0,
+                              child: _buildMyOceanGrid(isDark),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 16),
+                  // Attack target grid (Angriff)
+                  Expanded(
+                    child: Column(
+                      children: [
+                        const Text(
+                          'Angriff (Ziel)',
+                          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.grey),
+                        ),
+                        const SizedBox(height: 4),
+                        Expanded(
+                          child: Center(
+                            child: AspectRatio(
+                              aspectRatio: 1.0,
+                              child: _buildAttackGrid(isDark),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
     return Column(
       children: [
         // Tab Headers to switch view
@@ -582,51 +776,6 @@ class _BattleshipScreenState extends State<BattleshipScreen> with SingleTickerPr
             ),
           ),
 
-        if (_isGameOver)
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 8.0),
-            child: GlassContainer(
-              padding: const EdgeInsets.all(16),
-              borderRadius: 20,
-              gradientColors: [
-                const Color(0xFF8A2387).withOpacity(0.3),
-                const Color(0xFF00F2FE).withOpacity(0.1),
-              ],
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        _iWon ? 'Gewonnen!' : 'Verloren!',
-                        style: TextStyle(
-                          fontSize: 20,
-                          fontWeight: FontWeight.bold,
-                          color: _iWon ? Colors.greenAccent : Colors.redAccent,
-                        ),
-                      ),
-                      Text(
-                        _iWon ? 'Alle Gegner versenkt!' : 'Deine Flotte sinkt!',
-                        style: TextStyle(fontSize: 11, color: isDark ? Colors.white70 : Colors.black87),
-                      ),
-                    ],
-                  ),
-                  ElevatedButton(
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFF8A2387),
-                      foregroundColor: Colors.white,
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                    ),
-                    onPressed: _waitingForResetAccept ? null : _requestReset,
-                    child: Text(_waitingForResetAccept ? 'Warten...' : 'Neu starten'),
-                  ),
-                ],
-              ),
-            ),
-          ),
-
         const Spacer(),
 
         // Ocean Grid View
@@ -640,38 +789,7 @@ class _BattleshipScreenState extends State<BattleshipScreen> with SingleTickerPr
                 padding: const EdgeInsets.symmetric(horizontal: 20.0),
                 child: AspectRatio(
                   aspectRatio: 1.0,
-                  child: GlassContainer(
-                    borderRadius: 24,
-                    padding: const EdgeInsets.all(12),
-                    child: GridView.builder(
-                      physics: const NeverScrollableScrollPhysics(),
-                      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                        crossAxisCount: 10,
-                      ),
-                      itemCount: 100,
-                      itemBuilder: (context, index) {
-                        final x = index % 10;
-                        final y = index ~/ 10;
-                        final cellVal = _opponentBoard[y][x];
-
-                        return GestureDetector(
-                          onTap: () => _fireAtOpponent(x, y),
-                          child: Container(
-                            decoration: BoxDecoration(
-                              color: isDark ? Colors.white.withOpacity(0.015) : Colors.black.withOpacity(0.01),
-                              border: Border.all(
-                                color: isDark ? Colors.white10 : Colors.black.withOpacity(0.05),
-                                width: 0.5,
-                              ),
-                            ),
-                            child: Center(
-                              child: _buildAttackIndicator(cellVal),
-                            ),
-                          ),
-                        );
-                      },
-                    ),
-                  ),
+                  child: _buildAttackGrid(isDark),
                 ),
               ),
 
@@ -680,37 +798,7 @@ class _BattleshipScreenState extends State<BattleshipScreen> with SingleTickerPr
                 padding: const EdgeInsets.symmetric(horizontal: 20.0),
                 child: AspectRatio(
                   aspectRatio: 1.0,
-                  child: GlassContainer(
-                    borderRadius: 24,
-                    padding: const EdgeInsets.all(12),
-                    child: GridView.builder(
-                      physics: const NeverScrollableScrollPhysics(),
-                      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                        crossAxisCount: 10,
-                      ),
-                      itemCount: 100,
-                      itemBuilder: (context, index) {
-                        final x = index % 10;
-                        final y = index ~/ 10;
-                        final cellVal = _myBoard[y][x];
-
-                        return Container(
-                          decoration: BoxDecoration(
-                            color: cellVal == 1
-                                ? const Color(0xFF8A2387).withOpacity(0.4)
-                                : (isDark ? Colors.white.withOpacity(0.015) : Colors.black.withOpacity(0.01)),
-                            border: Border.all(
-                              color: isDark ? Colors.white10 : Colors.black.withOpacity(0.05),
-                              width: 0.5,
-                            ),
-                          ),
-                          child: Center(
-                            child: _buildMyFleetIndicator(cellVal),
-                          ),
-                        );
-                      },
-                    ),
-                  ),
+                  child: _buildMyOceanGrid(isDark),
                 ),
               ),
             ],
@@ -722,10 +810,76 @@ class _BattleshipScreenState extends State<BattleshipScreen> with SingleTickerPr
     );
   }
 
+  Widget _buildMyOceanGrid(bool isDark) {
+    return GlassContainer(
+      borderRadius: 24,
+      padding: const EdgeInsets.all(12),
+      child: GridView.builder(
+        physics: const NeverScrollableScrollPhysics(),
+        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+          crossAxisCount: 10,
+        ),
+        itemCount: 100,
+        itemBuilder: (context, index) {
+          final x = index % 10;
+          final y = index ~/ 10;
+          final cellVal = _myBoard[y][x];
+
+          return Container(
+            decoration: BoxDecoration(
+              color: cellVal == 1
+                  ? const Color(0xFF8A2387).withOpacity(0.4)
+                  : (isDark ? Colors.white.withOpacity(0.015) : Colors.black.withOpacity(0.01)),
+              border: Border.all(
+                color: isDark ? Colors.white10 : Colors.black.withOpacity(0.05),
+                width: 0.5,
+              ),
+            ),
+            child: Center(
+              child: _buildMyFleetIndicator(cellVal),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _buildAttackGrid(bool isDark) {
+    return GlassContainer(
+      borderRadius: 24,
+      padding: const EdgeInsets.all(12),
+      child: GridView.builder(
+        physics: const NeverScrollableScrollPhysics(),
+        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+          crossAxisCount: 10,
+        ),
+        itemCount: 100,
+        itemBuilder: (context, index) {
+          final x = index % 10;
+          final y = index ~/ 10;
+          final cellVal = _opponentBoard[y][x];
+
+          return GestureDetector(
+            onTap: () => _fireAtOpponent(x, y),
+            child: Container(
+              decoration: BoxDecoration(
+                color: isDark ? Colors.white.withOpacity(0.015) : Colors.black.withOpacity(0.01),
+                border: Border.all(
+                  color: isDark ? Colors.white10 : Colors.black.withOpacity(0.05),
+                  width: 0.5,
+                ),
+              ),
+              child: Center(
+                child: _buildAttackIndicator(cellVal),
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
   Widget _buildAttackIndicator(int val) {
-    // 0 = Unfired, 1 = Ship (secret in real mode, but in simulator it could be secret. If 1 in target ocean, it means AI ship is there unhit).
-    // In battle phase, we shouldn't show unhit ships on target board!
-    // 2 = Hit, 3 = Miss.
     if (val == 2) {
       return Icon(Icons.flash_on_rounded, size: 14, color: AppTheme.accentNeonPink)
           .animate()
@@ -741,7 +895,6 @@ class _BattleshipScreenState extends State<BattleshipScreen> with SingleTickerPr
   }
 
   Widget _buildMyFleetIndicator(int val) {
-    // My Fleet board: 1 = ship, 2 = hit, 3 = miss
     if (val == 1) {
       return const Icon(Icons.directions_boat_rounded, size: 12, color: Colors.white);
     } else if (val == 2) {
@@ -756,5 +909,114 @@ class _BattleshipScreenState extends State<BattleshipScreen> with SingleTickerPr
       );
     }
     return const SizedBox();
+  }
+
+  Widget _buildGameOverOverlay(BuildContext context, bool isDark, ConnectivityService connService) {
+    final isLandscape = MediaQuery.of(context).orientation == Orientation.landscape;
+    final winColor = _iWon ? Colors.greenAccent : Colors.redAccent;
+    final title = _iWon ? 'SIEG!' : 'NIEDERLAGE!';
+    final desc = _iWon
+        ? 'Alle gegnerischen Schiffe wurden erfolgreich versenkt!'
+        : 'Deine Flotte wurde vollständig vernichtet!';
+
+    return Positioned.fill(
+      child: Container(
+        color: Colors.black.withOpacity(0.75),
+        child: BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 5, sigmaY: 5),
+          child: Center(
+            child: SingleChildScrollView(
+              child: Container(
+                width: isLandscape ? 420 : 310,
+                padding: const EdgeInsets.all(24),
+                margin: const EdgeInsets.symmetric(horizontal: 24),
+                decoration: BoxDecoration(
+                  color: isDark ? const Color(0xFF161B26) : Colors.white,
+                  borderRadius: BorderRadius.circular(28),
+                  border: Border.all(
+                    color: winColor.withOpacity(0.6),
+                    width: 2,
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: winColor.withOpacity(0.2),
+                      blurRadius: 20,
+                      spreadRadius: 2,
+                    ),
+                  ],
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      _iWon ? Icons.emoji_events_rounded : Icons.sentiment_very_dissatisfied_rounded,
+                      size: 64,
+                      color: winColor,
+                    ).animate().scaleXY(begin: 0.8, end: 1.2, duration: 800.ms, curve: Curves.bounceOut),
+                    const SizedBox(height: 16),
+                    Text(
+                      title,
+                      style: TextStyle(
+                        fontSize: 24,
+                        fontWeight: FontWeight.w900,
+                        letterSpacing: 2,
+                        color: winColor,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    Text(
+                      desc,
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        fontSize: 14,
+                        color: isDark ? Colors.white70 : Colors.black87,
+                      ),
+                    ),
+                    const SizedBox(height: 24),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: OutlinedButton(
+                            style: OutlinedButton.styleFrom(
+                              side: BorderSide(color: isDark ? Colors.white24 : Colors.black26),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                              padding: const EdgeInsets.symmetric(vertical: 12),
+                            ),
+                            onPressed: _exitGame,
+                            child: Text(
+                              'Beenden',
+                              style: TextStyle(color: isDark ? Colors.white : Colors.black87, fontWeight: FontWeight.bold),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: ElevatedButton(
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: const Color(0xFF8A2387),
+                              foregroundColor: Colors.white,
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                              padding: const EdgeInsets.symmetric(vertical: 12),
+                            ),
+                            onPressed: _waitingForResetAccept ? null : _requestReset,
+                            child: _waitingForResetAccept
+                                ? const SizedBox(
+                                    width: 18,
+                                    height: 18,
+                                    child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                                  )
+                                : const Text('Revanche', style: TextStyle(fontWeight: FontWeight.bold)),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
   }
 }

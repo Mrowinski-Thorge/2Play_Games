@@ -70,7 +70,7 @@ class _GameSelectionScreenState extends State<GameSelectionScreen> {
     ).then((_) {
       // When popping back from a game, let the connection service know we exited
       final connService = Provider.of<ConnectivityService>(context, listen: false);
-      if (connService.isHost && connService.activeGameId != null) {
+      if (connService.activeGameId != null && connService.isHost) {
         connService.exitGame();
       }
     });
@@ -290,6 +290,72 @@ class _GameSelectionScreenState extends State<GameSelectionScreen> {
                 ),
               ).animate().fadeIn(delay: 150.ms),
 
+              if (!connService.isHost && connService.activeGameId != null)
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+                  child: GestureDetector(
+                    onTap: () {
+                      _navigateToGame(connService.activeGameId!);
+                    },
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                      decoration: BoxDecoration(
+                        gradient: const LinearGradient(
+                          colors: [Color(0xFFFF007F), Color(0xFF8A2387)],
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                        ),
+                        borderRadius: BorderRadius.circular(16),
+                        boxShadow: [
+                          BoxShadow(
+                            color: const Color(0xFFFF007F).withOpacity(0.4),
+                            blurRadius: 12,
+                            spreadRadius: 1,
+                          ),
+                        ],
+                      ),
+                      child: Row(
+                        children: [
+                          const Icon(
+                            Icons.play_circle_fill_rounded,
+                            color: Colors.white,
+                            size: 24,
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const Text(
+                                  'Laufendes Spiel!',
+                                  style: TextStyle(
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.white,
+                                  ),
+                                ),
+                                Text(
+                                  'Tippe hier, um das Spiel fortzusetzen.',
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color: Colors.white.withOpacity(0.9),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          const Icon(
+                            Icons.arrow_forward_ios_rounded,
+                            color: Colors.white,
+                            size: 16,
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ).animate(onPlay: (c) => c.repeat(reverse: true))
+                 .scaleXY(begin: 0.98, end: 1.02, duration: 1000.ms, curve: Curves.easeInOut),
+
               const SizedBox(height: 24),
 
               // Games List
@@ -301,79 +367,142 @@ class _GameSelectionScreenState extends State<GameSelectionScreen> {
                   separatorBuilder: (_, __) => const SizedBox(height: 16),
                   itemBuilder: (context, index) {
                     final game = games[index];
-                    final canInteract = connService.isHost;
+                    final isHost = connService.isHost;
+                    final isSuggested = connService.suggestedGameId == game['id'];
 
-                    return GestureDetector(
-                      onTap: canInteract
-                          ? () {
-                              connService.selectGame(game['id'] as String);
-                              _navigateToGame(game['id'] as String);
-                            }
+                    Widget card = GlassContainer(
+                      borderRadius: 24,
+                      padding: const EdgeInsets.all(20),
+                      border: isSuggested
+                          ? Border.all(
+                              color: isHost ? const Color(0xFF00F2FE) : const Color(0xFF8A2387),
+                              width: 2.5,
+                            )
                           : null,
-                      child: Opacity(
-                        opacity: canInteract ? 1.0 : 0.6,
-                        child: GlassContainer(
-                          borderRadius: 24,
-                          padding: const EdgeInsets.all(20),
-                          child: Row(
-                            children: [
-                              // Icon block
-                              Container(
-                                width: 64,
-                                height: 64,
-                                decoration: BoxDecoration(
-                                  borderRadius: BorderRadius.circular(16),
-                                  gradient: LinearGradient(
-                                    begin: Alignment.topLeft,
-                                    end: Alignment.bottomRight,
-                                    colors: game['colors'] as List<Color>,
-                                  ),
-                                  boxShadow: isDark
-                                      ? AppTheme.neonGlow((game['colors'] as List<Color>)[0])
-                                      : AppTheme.softShadow,
-                                ),
-                                child: Icon(
-                                  game['icon'] as IconData,
-                                  color: Colors.white,
-                                  size: 32,
-                                ),
+                      child: Row(
+                        children: [
+                          // Icon block
+                          Container(
+                            width: 64,
+                            height: 64,
+                            decoration: BoxDecoration(
+                              borderRadius: BorderRadius.circular(16),
+                              gradient: LinearGradient(
+                                begin: Alignment.topLeft,
+                                end: Alignment.bottomRight,
+                                colors: game['colors'] as List<Color>,
                               ),
-                              const SizedBox(width: 16),
-                              // Info text block
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
+                              boxShadow: isDark
+                                  ? AppTheme.neonGlow((game['colors'] as List<Color>)[0])
+                                  : AppTheme.softShadow,
+                            ),
+                            child: Icon(
+                              game['icon'] as IconData,
+                              color: Colors.white,
+                              size: 32,
+                            ),
+                          ),
+                          const SizedBox(width: 16),
+                          // Info text block
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
                                   children: [
-                                    Text(
-                                      game['title'] as String,
-                                      style: TextStyle(
-                                        fontSize: 18,
-                                        fontWeight: FontWeight.bold,
-                                        color: isDark ? Colors.white : Colors.black87,
+                                    Expanded(
+                                      child: Text(
+                                        game['title'] as String,
+                                        style: TextStyle(
+                                          fontSize: 18,
+                                          fontWeight: FontWeight.bold,
+                                          color: isDark ? Colors.white : Colors.black87,
+                                        ),
+                                        overflow: TextOverflow.ellipsis,
                                       ),
                                     ),
-                                    const SizedBox(height: 6),
-                                    Text(
-                                      game['desc'] as String,
-                                      style: TextStyle(
-                                        fontSize: 12,
-                                        color: isDark ? Colors.white60 : Colors.black54,
-                                      ),
-                                    ),
+                                    if (isSuggested) ...[
+                                      const SizedBox(width: 6),
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                                        decoration: BoxDecoration(
+                                          color: isHost ? const Color(0xFF00F2FE).withOpacity(0.15) : const Color(0xFF8A2387).withOpacity(0.15),
+                                          borderRadius: BorderRadius.circular(10),
+                                          border: Border.all(
+                                            color: isHost ? const Color(0xFF00F2FE) : const Color(0xFF8A2387),
+                                            width: 1.2,
+                                          ),
+                                        ),
+                                        child: Text(
+                                          isHost ? 'Gegner schlägt vor!' : 'Vorgeschlagen',
+                                          style: TextStyle(
+                                            fontSize: 9,
+                                            fontWeight: FontWeight.bold,
+                                            color: isHost ? const Color(0xFF00F2FE) : const Color(0xFF8A2387),
+                                          ),
+                                        ),
+                                      ).animate(onPlay: (c) => c.repeat(reverse: true))
+                                       .scaleXY(begin: 0.95, end: 1.05, duration: 800.ms, curve: Curves.easeInOut),
+                                    ],
                                   ],
                                 ),
-                              ),
-                              // Play arrow if Host
-                              if (canInteract)
-                                const Icon(
-                                  Icons.arrow_forward_ios_rounded,
-                                  color: Color(0xFF00F2FE),
-                                  size: 16,
+                                const SizedBox(height: 6),
+                                Text(
+                                  game['desc'] as String,
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color: isDark ? Colors.white60 : Colors.black54,
+                                  ),
                                 ),
-                            ],
+                              ],
+                            ),
                           ),
-                        ),
+                          const SizedBox(width: 8),
+                          // Play arrow if Host, suggestion status indicator if guest
+                          if (isHost)
+                            const Icon(
+                              Icons.arrow_forward_ios_rounded,
+                              color: Color(0xFF00F2FE),
+                              size: 16,
+                            )
+                          else
+                            Icon(
+                              isSuggested ? Icons.check_circle_rounded : Icons.add_circle_outline_rounded,
+                              color: isSuggested ? const Color(0xFF8A2387) : Colors.grey,
+                              size: 20,
+                            ),
+                        ],
                       ),
+                    );
+
+                    if (isSuggested) {
+                      card = card.animate(onPlay: (c) => c.repeat(reverse: true))
+                          .boxShadow(
+                            begin: const BoxShadow(color: Colors.transparent, blurRadius: 0),
+                            end: BoxShadow(
+                              color: isHost ? const Color(0xFF00F2FE).withOpacity(0.4) : const Color(0xFF8A2387).withOpacity(0.4),
+                              blurRadius: 12,
+                              spreadRadius: 1,
+                            ),
+                            duration: 1000.ms,
+                            curve: Curves.easeInOut,
+                          );
+                    }
+
+                    return GestureDetector(
+                      onTap: () {
+                        if (isHost) {
+                          connService.selectGame(game['id'] as String);
+                          _navigateToGame(game['id'] as String);
+                        } else {
+                          if (connService.activeGameId == game['id']) {
+                            _navigateToGame(game['id'] as String);
+                          } else {
+                            connService.suggestGame(game['id'] as String);
+                          }
+                        }
+                      },
+                      child: card,
                     ).animate().fadeIn(delay: Duration(milliseconds: 200 + index * 100)).slideX(begin: 0.1, end: 0);
                   },
                 ),
