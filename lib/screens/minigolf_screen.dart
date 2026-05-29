@@ -225,7 +225,7 @@ class _MinigolfScreenState extends State<MinigolfScreen> with SingleTickerProvid
     }
 
     // Apply drag
-    _ballVel = _ballVel * math.pow(currentFriction, dt * 60);
+    _ballVel = _ballVel * math.pow(currentFriction, dt * 60).toDouble();
 
     // Apply velocity limit to stop ball
     if (_ballVel.distance < 0.15) {
@@ -282,7 +282,7 @@ class _MinigolfScreenState extends State<MinigolfScreen> with SingleTickerProvid
       if (ice.contains(_opponentBallPos)) friction = 0.996;
     }
 
-    _opponentBallVel = _opponentBallVel * math.pow(friction, dt * 60);
+    _opponentBallVel = _opponentBallVel * math.pow(friction, dt * 60).toDouble();
 
     if (_opponentBallVel.distance < 0.15) {
       _opponentBallVel = Offset.zero;
@@ -878,6 +878,7 @@ class GolfPainter extends CustomPainter {
   final Offset? dragCurrent;
   final double maxDrag;
   final bool isDark;
+  final double holeRadius = 13.0;
 
   GolfPainter({
     required this.level,
@@ -981,7 +982,7 @@ class GolfPainter extends CustomPainter {
       ..color = Colors.black87
       ..style = PaintingStyle.fill;
     final holeCenter = scaleOffset(level.holePos);
-    canvas.drawCircle(holeCenter, _holeRadius * scaleX, holePaint);
+    canvas.drawCircle(holeCenter, holeRadius * scaleX, holePaint);
 
     // Hole flag
     final flagPaint = Paint()

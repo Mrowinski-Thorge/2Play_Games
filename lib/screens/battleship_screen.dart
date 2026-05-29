@@ -703,7 +703,7 @@ class _BattleshipScreenState extends State<BattleshipScreen> with SingleTickerPr
     if (val == 1) {
       return const Icon(Icons.directions_boat_rounded, size: 12, color: Colors.white);
     } else if (val == 2) {
-      return Icon(Icons.explosion, size: 14, color: AppTheme.accentNeonPink)
+      return Icon(Icons.flash_on_rounded, size: 14, color: AppTheme.accentNeonPink)
           .animate()
           .shake(duration: 300.ms);
     } else if (val == 3) {

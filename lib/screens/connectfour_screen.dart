@@ -284,7 +284,7 @@ class _ConnectFourScreenState extends State<ConnectFourScreen> {
                       style: TextStyle(
                         fontSize: 16,
                         fontWeight: FontWeight.w900,
-                        color: isDark ? Colors.white30 : Colors.black30,
+                        color: isDark ? Colors.white30 : Colors.black38,
                       ),
                     ),
                     _buildPlayerLabel(
@@ -342,7 +342,7 @@ class _ConnectFourScreenState extends State<ConnectFourScreen> {
                       Container(
                         padding: const EdgeInsets.all(8),
                         decoration: BoxDecoration(
-                          color: isDark ? Colors.black33 : Colors.black.withOpacity(0.04),
+                          color: isDark ? Colors.black.withOpacity(0.3) : Colors.black.withOpacity(0.04),
                           borderRadius: BorderRadius.circular(16),
                         ),
                         child: Row(

@@ -323,7 +323,7 @@ class _RockPaperScissorsScreenState extends State<RockPaperScissorsScreen> {
               style: TextStyle(
                 fontSize: 24,
                 fontWeight: FontWeight.w900,
-                color: isDark ? Colors.white24 : Colors.black24,
+                color: isDark ? Colors.white24 : Colors.black26,
               ),
             ),
 
