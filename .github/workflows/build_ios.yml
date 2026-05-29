@@ -33,7 +33,7 @@ jobs:
           zip -r 2Play_Unsigned.ipa Payload
           
       - name: Upload IPA Artifact
-        uses: actions/artifacts@v4
+        uses: actions/upload-artifact@v4
         with:
           name: 2Play-iOS-Unsigned-IPA
           path: 2Play_Unsigned.ipa
