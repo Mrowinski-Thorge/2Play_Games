@@ -24,7 +24,7 @@ jobs:
         run: flutter pub get
 
       - name: Build iOS Application (Unsigned)
-        run: flutter build ios --no-codesign --release --build-number=1 CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" DEVELOPMENT_TEAM=""
+        run: flutter build ios --no-codesign --release --build-number=1 --xcargs 'CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" DEVELOPMENT_TEAM=""'
 
       - name: Package Unsigned IPA
         run: |
