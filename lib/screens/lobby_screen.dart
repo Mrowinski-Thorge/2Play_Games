@@ -16,6 +16,7 @@ class LobbyScreen extends StatefulWidget {
 
 class _LobbyScreenState extends State<LobbyScreen> {
   StreamSubscription? _msgSubscription;
+  bool _hasNavigated = false;
 
   @override
   void initState() {
@@ -127,11 +128,14 @@ class _LobbyScreenState extends State<LobbyScreen> {
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     // Auto navigate to game selection screen when connected
-    if (connService.isConnected) {
+    if (connService.isConnected && !_hasNavigated) {
+      _hasNavigated = true;
       WidgetsBinding.instance.addPostFrameCallback((_) {
         Navigator.of(context).push(
           MaterialPageRoute(builder: (_) => const GameSelectionScreen()),
-        );
+        ).then((_) {
+          _hasNavigated = false;
+        });
       });
     }
 

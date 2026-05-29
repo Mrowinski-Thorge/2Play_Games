@@ -70,7 +70,9 @@ class _ChatSheetState extends State<ChatSheet> {
 
     // Trigger auto-scroll on new incoming message while open
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      connService.clearUnreadChatCount();
+      if (connService.unreadChatCount > 0) {
+        connService.clearUnreadChatCount();
+      }
       _scrollToBottom();
     });
 
