@@ -2,8 +2,7 @@ name: Build Unsigned iOS IPA
 
 on:
   push:
-    branches:
-      - main
+    branches: [ main, master ]
   workflow_dispatch:
 
 jobs:
@@ -11,29 +10,34 @@ jobs:
     runs-on: macos-latest
 
     steps:
-      - name: Checkout Repository
-        uses: actions/checkout@v4
+    - uses: actions/checkout@v4
 
-      - name: Set up Flutter
-        uses: subosito/flutter-action@v2
-        with:
-          channel: 'stable'
-          architecture: x64
+    - name: Set up Java
+      uses: actions/setup-java@v3
+      with:
+        distribution: 'zulu'
+        java-version: '17'
 
-      - name: Get Dependencies
-        run: flutter pub get
+    - name: Set up Flutter
+      uses: subosito/flutter-action@v2
+      with:
+        channel: 'stable'
 
-      - name: Build iOS Application (Unsigned)
-        run: flutter build ios --no-codesign --release --build-number=1 --xcargs 'CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" DEVELOPMENT_TEAM=""'
+    - name: Get dependencies
+      run: flutter pub get
 
-      - name: Package Unsigned IPA
-        run: |
-          mkdir Payload
-          cp -r build/ios/iphoneos/Runner.app Payload/
-          zip -r 2Play_Unsigned.ipa Payload
-          
-      - name: Upload IPA Artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: 2Play-iOS-Unsigned-IPA
-          path: 2Play_Unsigned.ipa
+    - name: Build iOS App without signing
+      run: flutter build ios --no-codesign --release
+
+    - name: Package Unsigned IPA
+      run: |
+        mkdir Payload
+        cp -r build/ios/iphoneos/Runner.app Payload/
+        zip -r Orately-Unsigned.ipa Payload
+        rm -rf Payload
+
+    - name: Upload IPA Artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: 2PlayGames-IPA
+        path: 2PlayGames.ipa
