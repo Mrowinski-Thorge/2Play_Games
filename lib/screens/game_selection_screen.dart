@@ -8,6 +8,7 @@ import 'tictactoe_screen.dart';
 import 'connectfour_screen.dart';
 import 'battleship_screen.dart';
 import 'rockpaperscissors_screen.dart';
+import 'minigolf_screen.dart';
 
 class GameSelectionScreen extends StatefulWidget {
   const GameSelectionScreen({super.key});
@@ -53,6 +54,9 @@ class _GameSelectionScreenState extends State<GameSelectionScreen> {
         break;
       case 'rockpaperscissors':
         gameScreen = const RockPaperScissorsScreen();
+        break;
+      case 'minigolf':
+        gameScreen = const MinigolfScreen();
         break;
       default:
         return;
@@ -110,6 +114,13 @@ class _GameSelectionScreenState extends State<GameSelectionScreen> {
         'desc': 'Ein schnelles Duell. Wähle deine Geste und besiege den Gegner!',
         'icon': Icons.sports_handball_rounded,
         'colors': [const Color(0xFFFF8C00), const Color(0xFFFF007F)],
+      },
+      {
+        'id': 'minigolf',
+        'title': 'Mini-Golf',
+        'desc': 'Bringe den Ball mit möglichst wenigen Schlägen ins Loch! 50 Levels & Turnier-Modus.',
+        'icon': Icons.flag_rounded,
+        'colors': [Colors.green[600]!, Colors.teal],
       },
     ];
 
